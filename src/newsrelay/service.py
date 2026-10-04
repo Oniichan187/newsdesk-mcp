@@ -84,7 +84,11 @@ def _research_window(conn: sqlite3.Connection, cfg: Config) -> dict[str, Any]:
     else:
         base = now - timedelta(hours=cfg.initial_lookback_hours)
         research_from = base
-        note = "first run: no checkpoint yet"
+        note = (
+            f"first run: the memory is still empty, so everything looks new. Publish only the "
+            f"{cfg.first_run_max_stories} most important stories of this window (the relay accepts no more); "
+            f"from the next run on only new developments (the delta) are posted"
+        )
     until = min(now, base + window)
     out: dict[str, Any] = {
         "research_from": timeutil.to_iso(research_from),
@@ -419,7 +423,16 @@ def publish_digest(conn: sqlite3.Connection, cfg: Config, inp: PublishInput) -> 
                 (batch_id, run_id, f"pub:{inp.run_key}", req_hash, timeutil.now_iso()),
             )
             seq = 0
-            for story in inp.stories:
+            first_run = _checkpoint(conn) is None
+            stories = list(inp.stories)
+            if first_run:
+                # Empty memory: keep the first post small instead of dumping a whole backlog.
+                stories.sort(key=lambda st: -st.importance)
+            for story in stories:
+                if first_run and len(accepted) >= cfg.first_run_max_stories:
+                    rejected.append({"candidate_id": story.candidate_id,
+                                     "reason": f"FIRST_RUN_LIMIT: max {cfg.first_run_max_stories} stories on the first run"})  # fmt: skip
+                    continue
                 acc, rej, seq = _store_story(conn, cfg, run, batch_id, story, seq)
                 if acc:
                     accepted.append(acc)

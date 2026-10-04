@@ -9,7 +9,8 @@ listen_port = 8787
 # Research window: next run searches from (last checkpoint - overlap_hours) up to
 # min(now, that + catchup_window_days). Long outages are caught up window by window.
 overlap_hours = 6
-initial_lookback_hours = 36
+initial_lookback_hours = 24
+first_run_max_stories = 8
 catchup_window_days = 7
 
 # Discord: bot mode (token via `sudo newsrelay set-bot-token`) posts into this channel.

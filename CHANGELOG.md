@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.1 — 2026-10-04
+
+- First run: 24 h window, `begin_run` explains that memory is empty, and at most `first_run_max_stories` (8) stories are accepted, most important first. Later runs post only the delta.
+
 ## 1.4.0 — 2026-10-04
 
 - `newsrelay-presence.service`: keeps the bot **online** in Discord (Gateway session, intents 0,

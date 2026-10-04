@@ -40,7 +40,9 @@ class Config:
     refresh_token_ttl_days: int = 180
     # Research checkpoint behaviour
     overlap_hours: float = 6.0
-    initial_lookback_hours: float = 36.0
+    initial_lookback_hours: float = 24.0
+    # The very first run has no memory yet; cap how much it may post.
+    first_run_max_stories: int = 8
     # Long outages are caught up in chronological windows of at most this size; the checkpoint
     # never jumps over time that was not researched.
     catchup_window_days: float = 7.0

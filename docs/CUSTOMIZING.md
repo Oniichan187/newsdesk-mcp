@@ -77,7 +77,8 @@ All in `/etc/newsrelay/config.toml` (restart both services after changes):
 | Key | Default | Meaning |
 |---|---|---|
 | `overlap_hours` | 6 | each run re-checks the last N hours (late-indexed articles) |
-| `initial_lookback_hours` | 36 | window of the very first run |
+| `initial_lookback_hours` | 24 | window of the very first run (memory is empty then) |
+| `first_run_max_stories` | 8 | the first run posts at most this many stories (most important first) |
 | `catchup_window_days` | 7 | after an outage, catch up in windows of this size |
 | `dormant_after_days` / `archive_after_days` | 21 / 120 | topic aging (archived topics are still matched) |
 | `body_retention_days` | 180 | rendered texts of *delivered* posts are pruned after this |

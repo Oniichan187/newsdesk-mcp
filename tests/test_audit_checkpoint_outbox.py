@@ -349,3 +349,29 @@ def test_upgrade_check_on_copy(cfg, conn, clock, tmp_path, capsys):
     assert cmd_upgrade_check(cfg, A()) == 0  # type: ignore[arg-type]
     assert cfg.db_path.stat().st_mtime_ns == before
     assert '"ok": true' in capsys.readouterr().out
+
+
+def test_first_run_is_capped_and_says_so(cfg, conn, clock):
+    w = service.begin_run(conn, cfg, BeginRunInput(run_key="daily-news/2026-10-03"))
+    assert "first run" in w["note"] and str(cfg.first_run_max_stories) in w["note"]
+    assert w["research_from"] == timeutil.to_iso(clock.t - timedelta(hours=cfg.initial_lookback_hours))
+    many = [
+        story(f"s{i}", headline=f"Distinct first-run story number {i}", importance=1 + (i % 3),
+              key_facts=[f"unique fact {i} for the first run"], sources=[{"url": f"https://example.org/{i}"}])
+        for i in range(12)
+    ]  # fmt: skip
+    out = service.publish_digest(conn, cfg, publish_input("daily-news/2026-10-03", many))
+    assert len(out["stories"]) == cfg.first_run_max_stories
+    limited = [r for r in out["rejected"] if r["reason"].startswith("FIRST_RUN_LIMIT")]
+    assert len(limited) == 12 - cfg.first_run_max_stories
+    kept = {s["candidate_id"] for s in out["stories"]}
+    assert {f"s{i}" for i in range(12) if 1 + (i % 3) == 3} <= kept  # most important first
+    # second run: no cap any more
+    clock.advance(days=1)
+    more = [
+        story(f"t{i}", headline=f"Second-day distinct story {i}", key_facts=[f"second day fact {i}"],
+              sources=[{"url": f"https://example.org/t{i}"}])
+        for i in range(10)
+    ]  # fmt: skip
+    out2 = service.publish_digest(conn, cfg, publish_input("daily-news/2026-10-04", more))
+    assert len(out2["stories"]) == 10
