@@ -4,6 +4,8 @@
 
 **Your own curated news channel: ChatGPT researches, a Raspberry Pi remembers, Discord delivers.**
 
+<sub>Self-hosted MCP server · AI news digest for Discord · ChatGPT Scheduled Tasks · news deduplication with long-term memory · Raspberry Pi</sub>
+
 [![CI](https://github.com/Oniichan187/newsdesk-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/Oniichan187/newsdesk-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)
@@ -19,6 +21,11 @@ relevant, so ChatGPT posts **only genuinely new stories and real updates**, neve
 The server then delivers the posts reliably to a **Discord channel** through a bot.
 
 No LLM on the Pi, no crawler, no Docker, no cloud database: Python + SQLite + systemd, ~100 MB RAM.
+
+> **In one sentence:** a daily, AI-written news briefing in your Discord server that **never repeats a
+> story**, posts **follow-ups only when something materially changed**, cites **only outlets you allow**,
+> and runs unattended on a Raspberry Pi — with ChatGPT doing the research and a small MCP server doing
+> the remembering.
 
 ```
 ## 🔄 Update: Austrian health insurer confirms data breach
@@ -38,6 +45,27 @@ hacker group on Thursday.
 📰 Sources: [ORF](…) · [Der Standard](…)
 ```
 <sub>Illustrative example.</sub>
+
+## 🆚 How is this different from an RSS-to-Discord AI bot?
+
+Most "AI news bots" fetch RSS headlines, let an LLM rewrite them and post them. That works, but they
+forget what they posted after a few days, repeat stories that ten outlets cover, and cannot tell a
+rehash from a real development. newsdesk-mcp is built around exactly that problem:
+
+| | Typical RSS + LLM bot | **newsdesk-mcp** |
+|---|---|---|
+| Who finds the news | RSS feeds | ChatGPT researches the web across your chosen outlets, can verify with primary sources |
+| Duplicate detection | same URL/title, last few days | long-term memory: URL, fact fingerprints, full-text search, fuzzy matching — for years |
+| Same story from 10 outlets | 10 posts (or 1 by luck) | 1 post |
+| Follow-ups | reposted as "new" or dropped | posted as **Update** only when facts materially changed; **Corrections** supported |
+| Sources | whatever the feed contains | enforced **allowlist** of outlets (lookalike domains rejected) |
+| Missed days / outages | gap or flood | gap-free catch-up in bounded windows |
+| Delivery | fire-and-forget | durable outbox, retries, no double posts, never pings @everyone |
+| Token use | full articles to the LLM | compact candidates; history is matched locally, never sent |
+| Costs | API tokens per run | covered by your ChatGPT plan (no API key needed) |
+
+When a simple RSS bot is enough for you, use one — it is easier to set up. Use this when you want a
+**curated, non-repetitive, sourced** briefing that keeps track of ongoing stories.
 
 ## ✨ Features
 
@@ -156,6 +184,40 @@ Recovery playbooks: [DISASTER_RECOVERY.md](docs/DISASTER_RECOVERY.md).
 - **Exactly-once delivery** is impossible over HTTP in general; ambiguous sends are retried only with
   Discord's nonce de-duplication and otherwise parked for a decision, never blindly re-posted.
 - **Backups are local** (same SD card). Copy `/var/lib/newsrelay/backups` elsewhere now and then.
+
+## ❓ FAQ
+
+**How do I get a daily AI news summary posted to my Discord server automatically?**
+Run this MCP server on a Raspberry Pi (or any Linux box), connect it to ChatGPT as a custom app, and
+create a ChatGPT Scheduled Task with the [provided prompt](docs/SCHEDULED_TASK_PROMPT.md). Every day the
+task researches the news and publishes through the server's Discord bot.
+
+**How do I stop ChatGPT (or any AI news bot) from posting the same news again and again?**
+That is the core of this project: before publishing, ChatGPT sends compact candidates to the server,
+which answers `EXACT_DUPLICATE`, `LIKELY_DUPLICATE`, `POSSIBLE_EXISTING_TOPIC` (with the previous facts)
+or `NO_MATCH`, using a local long-term memory. The server also re-checks duplicates when publishing.
+
+**Can ChatGPT Scheduled Tasks use a custom MCP server?**
+ChatGPT supports custom MCP servers as apps in developer mode, and Scheduled Tasks can use apps.
+Write actions may require your approval depending on your plan; this project needs exactly one write
+call per run. See [CHATGPT_SETUP.md](docs/CHATGPT_SETUP.md) for the current details and limitations.
+
+**Does the Raspberry Pi run an AI model?**
+No. The Pi only stores memory, matches candidates and delivers to Discord (~100 MB RAM). The research
+and writing happen in ChatGPT.
+
+**Can I use other news sources, another language or region?**
+Yes. Edit the allowlist in [`src/newsrelay/sources.toml`](src/newsrelay/sources.toml) and regenerate the
+prompt with `scripts/build_prompt.py --language … --region … --time …` — see
+[CUSTOMIZING.md](docs/CUSTOMIZING.md).
+
+**Is it safe to expose a server to the internet for ChatGPT?**
+The endpoint requires OAuth 2.1 (PKCE), accepts only strictly validated news metadata, never fetches
+URLs, cannot run commands, and holds no secrets it could return. See [SECURITY.md](docs/SECURITY.md).
+
+**Does it work with Telegram, Slack or email?**
+Not out of the box — delivery is Discord (bot or webhook). The transport is a small isolated module
+(`publishing/discord.py`); other targets are welcome as contributions.
 
 ## 📚 Documentation
 

@@ -1,0 +1,29 @@
+# newsdesk-mcp
+
+> Self-hosted MCP (Model Context Protocol) server for a Raspberry Pi that turns a ChatGPT Scheduled
+> Task into a curated, non-repetitive daily news briefing posted to a Discord channel by a bot.
+
+ChatGPT researches the news from an allowlist of outlets; the server keeps a compact long-term
+memory and tells ChatGPT whether each candidate story is new, a duplicate, or an update of an earlier
+story, then delivers posts to Discord reliably. No LLM runs on the Pi. Python, SQLite, systemd,
+OAuth 2.1, Streamable HTTP. MIT license.
+
+Use it when you want: an AI news digest in Discord that never repeats stories; follow-up posts only
+for material developments; only trusted sources; unattended operation on a Raspberry Pi.
+
+## Docs
+
+- [README](https://github.com/Oniichan187/newsdesk-mcp/blob/main/README.md): overview, comparison, quick start, FAQ
+- [Architecture](https://github.com/Oniichan187/newsdesk-mcp/blob/main/docs/ARCHITECTURE.md): run lifecycle, dedup memory, outbox state machine
+- [ChatGPT setup](https://github.com/Oniichan187/newsdesk-mcp/blob/main/docs/CHATGPT_SETUP.md): connecting the MCP server as a ChatGPT app, OAuth, limitations
+- [Scheduled Task prompt](https://github.com/Oniichan187/newsdesk-mcp/blob/main/docs/SCHEDULED_TASK_PROMPT.md): ready-to-paste prompt
+- [Customizing](https://github.com/Oniichan187/newsdesk-mcp/blob/main/docs/CUSTOMIZING.md): sources allowlist, language, region, Discord settings
+- [Security](https://github.com/Oniichan187/newsdesk-mcp/blob/main/docs/SECURITY.md): exposure, secrets, threat model
+
+## MCP tools
+
+- newsrelay_begin_run (read-only): research time window for a run
+- newsrelay_match_candidates (read-only): duplicate / update / new classification against memory
+- newsrelay_publish_digest (write): publish NEW / UPDATE / CORRECTION stories to Discord
+- newsrelay_complete_noop (write): finish a run with nothing to post
+- newsrelay_publish_status, newsrelay_health (read-only)
