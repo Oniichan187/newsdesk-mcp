@@ -41,6 +41,13 @@ _CONFIDENCE_LABEL = {
     "disputed": "⚠️ disputed",
     "corrected": "correction",
 }
+_LIKELIHOOD_LABEL = {
+    "very_likely": "very likely",
+    "likely": "likely",
+    "uncertain": "open (about even)",
+    "unlikely": "unlikely",
+    "very_unlikely": "very unlikely",
+}
 _KIND_PREFIX = {"NEW": "", "UPDATE": "🔄 Update: ", "CORRECTION": "✏️ Correction: "}
 _CONTINUATION_RESERVE = 24
 
@@ -61,6 +68,19 @@ def _source_line(story: Story) -> str:
         label = (src.name or url_domain(src.url)).replace("[", "(").replace("]", ")")
         links.append(f"[{label}](<{src.url}>)")
     return "📰 **Sources:** " + " · ".join(links)
+
+
+def _impact_lines(story: Story) -> list[str]:
+    where = f" ({story.impact_region})" if story.impact_region else ""
+    lines = [f"🎯 **Impact{where}:** {story.impact}"]
+    if story.outlook:
+        lines += ["", "🔮 **Outlook:**"]
+        for o in story.outlook:
+            level = _LIKELIHOOD_LABEL[o.likelihood]
+            if o.probability_percent is not None:
+                level += f", ~{o.probability_percent} %"
+            lines.append(f"- {o.event} → **{level}** ({o.basis})")
+    return lines
 
 
 _CATEGORY_EMOJI = {
@@ -106,6 +126,8 @@ def render_text(story: Story, display_tz: str) -> str:
         "-# " + " · ".join(meta),
         "",
         story.body.strip(),
+        "",
+        *_impact_lines(story),
         "",
         _source_line(story),
     ]

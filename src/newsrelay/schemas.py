@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 MAX_CANDIDATES = 40
 MAX_STORIES = 20
@@ -18,6 +18,7 @@ MAX_FACTS = 8
 MAX_SOURCES = 6
 MAX_ENTITIES = 12
 MAX_URL_LEN = 600
+MAX_OUTLOOKS = 3
 
 RUN_KEY_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,39}/\d{4}-\d{2}-\d{2}(T\d{2}(:\d{2})?)?$")
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -86,6 +87,16 @@ Category = Literal[
     "other",
 ]
 Confidence = Literal["confirmed", "partially_confirmed", "unverified_claim", "disputed", "corrected"]
+Likelihood = Literal["very_likely", "likely", "uncertain", "unlikely", "very_unlikely"]
+
+# A stated percentage must fit the verbal level (bands overlap on purpose).
+LIKELIHOOD_RANGE: dict[str, tuple[int, int]] = {
+    "very_likely": (80, 100),
+    "likely": (60, 85),
+    "uncertain": (35, 65),
+    "unlikely": (15, 40),
+    "very_unlikely": (0, 20),
+}
 
 
 RunKey = Annotated[
@@ -108,6 +119,34 @@ class Source(Strict):
         Annotated[str, StringConstraints(strip_whitespace=True, max_length=80), AfterValidator(_no_control)]
         | None
     ) = None
+
+
+class Outlook(Strict):
+    """A forecast or estimate the story rests on, with how likely it is to happen."""
+
+    event: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=5, max_length=200),
+        AfterValidator(_no_control),
+    ]
+    likelihood: Likelihood
+    probability_percent: int | None = Field(default=None, ge=0, le=100)
+    basis: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=5, max_length=300),
+        AfterValidator(_no_control),
+    ]
+
+    @model_validator(mode="after")
+    def _percent_fits_level(self) -> Outlook:
+        if self.probability_percent is not None:
+            lo, hi = LIKELIHOOD_RANGE[self.likelihood]
+            if not lo <= self.probability_percent <= hi:
+                raise ValueError(
+                    f"probability_percent {self.probability_percent} does not fit likelihood "
+                    f"'{self.likelihood}' ({lo}-{hi})"
+                )
+        return self
 
 
 class BeginRunInput(Strict):
@@ -145,6 +184,20 @@ class Story(Strict):
     body: Annotated[str, StringConstraints(strip_whitespace=True, min_length=40, max_length=3500)]
     key_facts: list[Fact] = Field(min_length=1, max_length=MAX_FACTS)
     entities: list[Entity] = Field(default_factory=list, max_length=MAX_ENTITIES)
+    impact: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=10, max_length=600),
+        AfterValidator(_no_control),
+    ] = Field(description="What concretely changes or could change for the reader: who, how, from when.")
+    impact_region: (
+        Annotated[str, StringConstraints(strip_whitespace=True, max_length=60), AfterValidator(_no_control)]
+        | None
+    ) = Field(default=None, description="Where the impact mainly lands, e.g. 'Europe', 'USA', 'worldwide'.")
+    outlook: list[Outlook] = Field(
+        default_factory=list,
+        max_length=MAX_OUTLOOKS,
+        description="Only for forecasts/estimates/pending decisions: what may happen and how likely.",
+    )
     material_change: (
         Annotated[str, StringConstraints(strip_whitespace=True, max_length=400), AfterValidator(_no_control)]
         | None
