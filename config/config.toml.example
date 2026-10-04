@@ -1,0 +1,30 @@
+# /etc/newsrelay/config.toml — NON-SECRET settings only.
+# Secrets live in /etc/newsrelay/secrets/ (root-only) and reach services as systemd credentials.
+
+# Public HTTPS origin (Tailscale Funnel). OAuth issuer + MCP resource = <this>/mcp
+public_base_url = "@PUBLIC_BASE_URL@"
+listen_host = "127.0.0.1"
+listen_port = 8787
+
+# Research window: next run searches from (last checkpoint - overlap_hours) up to
+# min(now, that + catchup_window_days). Long outages are caught up window by window.
+overlap_hours = 6
+initial_lookback_hours = 36
+catchup_window_days = 7
+
+# Discord: bot mode (token via `sudo newsrelay set-bot-token`) posts into this channel.
+discord_channel_id = ""
+# webhook mode only (fallback when no bot is configured)
+discord_username = "News Update"
+max_message_chars = 1850
+suppress_link_embeds = true
+
+# Retention (compact identity data — titles, facts, fingerprints, URLs — is kept forever)
+body_retention_days = 180
+attempt_retention_days = 30
+dormant_after_days = 21
+archive_after_days = 120
+backup_keep_daily = 14
+backup_keep_weekly = 8
+backup_keep_monthly = 12
+min_free_disk_mb = 200

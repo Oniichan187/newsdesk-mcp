@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install hash-pinned dependencies (PyPI only)
+        run: |
+          python -m venv .venv
+          PIP_CONFIG_FILE=/dev/null .venv/bin/pip install --require-hashes --only-binary=:all: \
+            -r requirements.lock -r requirements-dev.lock
+          echo "$PWD/src" > "$(.venv/bin/python -c 'import sysconfig;print(sysconfig.get_paths()["purelib"])')/newsrelay.pth"
+      - name: Lint
+        run: .venv/bin/ruff check . && .venv/bin/ruff format --check .
+      - name: Type check
+        run: .venv/bin/mypy
+      - name: Tests
+        run: .venv/bin/pytest -q
+      - name: Shell syntax
+        run: for f in scripts/*.sh; do sh -n "$f"; done

@@ -1,0 +1,28 @@
+# International English-language sources. Use with:
+#   python3 scripts/build_prompt.py --sources examples/sources/international.txt --region "the world"
+
+# Wire services
+Reuters
+Associated Press (apnews.com)
+AFP
+
+# Broadcasters
+BBC News
+Deutsche Welle (dw.com/en)
+NPR
+Al Jazeera English
+France 24 (english)
+
+# Newspapers & magazines
+The Guardian
+The New York Times
+The Washington Post
+Financial Times
+The Economist
+Le Monde in English
+Politico Europe
+
+# Science & health
+Nature News
+Science (science.org)
+STAT News

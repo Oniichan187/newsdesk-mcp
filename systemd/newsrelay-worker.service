@@ -1,0 +1,64 @@
+[Unit]
+Description=News Relay Discord delivery worker (durable outbox)
+Documentation=file:///opt/newsrelay/current/src/docs/ARCHITECTURE.md
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+[Service]
+Type=notify
+NotifyAccess=main
+User=newsrelay
+Group=newsrelay
+Environment=NEWSRELAY_CONFIG=/etc/newsrelay/config.toml PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+ExecStart=/opt/newsrelay/current/venv/bin/newsrelay worker
+# Webhook URL is passed only as a systemd credential (never env/argv). The installer creates an
+# empty placeholder so the worker starts (and holds the queue) before a webhook is configured.
+LoadCredential=discord_webhook:/etc/newsrelay/secrets/discord_webhook
+LoadCredential=discord_bot_token:/etc/newsrelay/secrets/discord_bot_token
+Restart=on-failure
+RestartSec=15
+TimeoutStartSec=60
+# A send in flight has bounded timeouts (~45s); let it finish so its result is recorded.
+TimeoutStopSec=75
+WatchdogSec=180
+
+StateDirectory=newsrelay
+StateDirectoryMode=0750
+RuntimeDirectory=newsrelay
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=yes
+UMask=0077
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RemoveIPC=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+SystemCallErrorNumber=EPERM
+MemoryMax=200M
+TasksMax=32
+
+[Install]
+WantedBy=multi-user.target

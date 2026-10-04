@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+# runtime state and secrets: never commit
+*.db
+*.db-wal
+*.db-shm
+*.sqlite*
+backups/
+secrets/
+*.secret
+*.hash
+config.local.toml
+.env

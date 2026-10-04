@@ -1,0 +1,45 @@
+# German-language quality press, public broadcasters and independent outlets (DE / AT / CH).
+# This is the default list used by scripts/build_prompt.py. One outlet per line; edit freely.
+# Names are enough — ChatGPT finds the sites. Add a domain in brackets if a name is ambiguous.
+
+# Germany — newspapers & magazines
+taz
+Frankfurter Rundschau
+Die Zeit
+Süddeutsche Zeitung
+Der Spiegel
+Tagesspiegel
+
+# Germany — public broadcasting
+Tagesschau
+Deutschlandfunk
+ZDF
+ARD
+NDR
+
+# Germany — independent / investigative / media criticism
+netzpolitik.org
+Correctiv
+FragDenStaat
+Volksverpetzer
+Übermedien
+Belltower.News
+Krautreporter
+
+# Austria
+Der Standard
+ORF
+Falter
+Profil
+Dossier
+ZackZack
+
+# Switzerland
+Tages-Anzeiger
+Berner Zeitung
+Der Bund
+Republik
+Watson
+
+# Other
+zufron.com

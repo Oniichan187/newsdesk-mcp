@@ -1,0 +1,18 @@
+[Unit]
+Description=News Relay local health probe (restarts a unit only after 3 consecutive failures)
+
+[Service]
+Type=oneshot
+# Runs as root only to be able to `systemctl restart`; code under /opt/newsrelay is root-owned.
+Environment=NEWSRELAY_CONFIG=/etc/newsrelay/config.toml PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/newsrelay/current/venv/bin/newsrelay healthcheck --restart
+SuccessExitStatus=1
+TimeoutStartSec=120
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=-/run/newsrelay
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost

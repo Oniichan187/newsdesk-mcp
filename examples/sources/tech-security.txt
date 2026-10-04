@@ -1,0 +1,18 @@
+# Tech, AI and security focus. Combine with a narrower --topics, e.g.:
+#   python3 scripts/build_prompt.py --sources examples/sources/tech-security.txt \
+#       --topics "AI, computing, cybersecurity, privacy, internet policy, open source"
+
+Ars Technica
+The Verge
+Wired
+heise online
+golem.de
+404 Media
+The Register
+BleepingComputer
+The Record (therecord.media)
+Krebs on Security
+CISA advisories (cisa.gov)
+netzpolitik.org
+Electronic Frontier Foundation (eff.org)
+Hacker News front page (news.ycombinator.com)
