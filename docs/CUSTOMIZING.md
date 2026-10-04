@@ -67,7 +67,7 @@ runs per day, change the run key in the prompt to `news/YYYY-MM-DDTHH` — no ba
 
 Post layout (heading, category emoji, source line) is in
 [`src/newsrelay/publishing/formatter.py`](../src/newsrelay/publishing/formatter.py); the body layout
-("What happened / Why it matters / …") is in the prompt template
+("What happened / Key facts / …") is in the prompt template
 [`prompts/scheduled-task.template.md`](../prompts/scheduled-task.template.md).
 
 ## 4. Memory, outages, retention

@@ -105,6 +105,7 @@ def story(cid: str = "c1", **kw: Any) -> dict[str, Any]:
             "Meta says it will appeal the decision",
         ],
         "entities": ["European Commission", "Meta", "Facebook Marketplace"],
+        "impact": "Marketplace may be unbundled from Facebook for EU users.",
         "topic_state_summary": "EU fined Meta €798m for Marketplace tying; Meta to appeal.",
         "confidence": "confirmed",
         "sources": [

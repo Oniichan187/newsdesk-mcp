@@ -34,13 +34,16 @@ No LLM on the Pi, no crawler, no Docker, no cloud database: Python + SQLite + sy
 **Since the last update:** The insurer has now officially confirmed the breach first claimed by a
 hacker group on Thursday.
 
-**Why it matters:** Data of about 1.2 million insured people is affected …
-
 **Key facts:**
 - Confirmation came from the insurer's own statement
 - Police and the data protection authority are investigating
 
 **Confirmed / unclear:** The breach is confirmed; whether medical records were taken is still open.
+
+🎯 **Impact (Austria):** About 1.2 million insured people should expect phishing mails and calls …
+
+🔮 **Outlook:**
+- Medical records turn out to be affected → **open (about even)** (insurer's statement)
 
 📰 Sources: [ORF](…) · [Der Standard](…)
 ```

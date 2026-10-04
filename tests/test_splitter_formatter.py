@@ -101,3 +101,52 @@ def test_render_update_prefix_and_sources():
 def test_limit_too_small(limit):
     with pytest.raises(ValueError):
         split_message("x", limit)
+
+
+def test_impact_and_outlook_rendered_before_sources():
+    d = story(
+        impact="EU users may see Marketplace split from Facebook.",
+        impact_region="Europe",
+        outlook=[
+            {
+                "event": "Court overturns the fine",
+                "likelihood": "unlikely",
+                "probability_percent": 25,
+                "basis": "antitrust lawyers quoted by Tagesschau",
+            },
+            {"event": "Meta appeals", "likelihood": "very_likely", "basis": "Meta announced it"},
+        ],
+    )
+    text = render_text(as_story(d), "Europe/Vienna")
+    assert "🎯 **Impact (Europe):** EU users may see Marketplace split from Facebook." in text
+    assert "- Court overturns the fine → **unlikely, ~25 %** (antitrust lawyers quoted by Tagesschau)" in text
+    assert "- Meta appeals → **very likely** (Meta announced it)" in text
+    assert text.index("🎯") < text.index("🔮") < text.index("📰 **Sources:**")
+
+
+def test_no_outlook_section_without_outlook():
+    text = render_text(as_story(story()), "Europe/Vienna")
+    assert "🎯 **Impact:**" in text and "🔮" not in text
+
+
+def test_impact_is_required():
+    d = story()
+    del d["impact"]
+    with pytest.raises(ValueError):
+        as_story(d)
+
+
+@pytest.mark.parametrize(("level", "pct"), [("very_unlikely", 90), ("likely", 20), ("uncertain", 95)])
+def test_outlook_percent_must_fit_level(level, pct):
+    d = story(
+        outlook=[
+            {
+                "event": "Something happens",
+                "likelihood": level,
+                "probability_percent": pct,
+                "basis": "some estimate",
+            }
+        ]
+    )
+    with pytest.raises(ValueError):
+        as_story(d)

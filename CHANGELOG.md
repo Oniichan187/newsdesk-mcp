@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.5.0 — 2026-10-04
+
+- **Reader-impact test** in the task prompt: only stories that can change something for the reader
+  (money, laws, safety, health, services, security, spillover from wars …); local tragedies without
+  wider consequences are dropped.
+- Stories carry a required `impact` (+ optional `impact_region`), rendered as "🎯 Impact" — replaces
+  "Why it matters" in the body.
+- Optional `outlook` (1–3 items) for forecasts/estimates: event, likelihood
+  (very_likely … very_unlikely), optional percentage (must fit the level) and basis; rendered as
+  "🔮 Outlook". Re-paste the regenerated prompt into the Scheduled Task.
+
 ## 1.4.1 — 2026-10-04
 
 - First run: 24 h window, `begin_run` explains that memory is empty, and at most `first_run_max_stories` (8) stories are accepted, most important first. Later runs post only the delta.
