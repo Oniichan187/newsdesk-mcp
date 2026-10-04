@@ -44,3 +44,11 @@ def test_custom_options(tmp_path):
     assert bp.read_sources(f) == ["Outlet A (a.example)", "b.example"]
     text = bp.build(["Outlet A"], language="German", region="Switzerland", timezone="Europe/Zurich")
     assert "German Discord markdown" in text and "Switzerland" in text and "Europe/Zurich" in text
+
+
+def test_readme_lists_every_allowed_outlet():
+    from newsrelay.sources import load_allowlist
+
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    for name in load_allowlist(None).names():
+        assert f"[{name}](" in readme, name

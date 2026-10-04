@@ -109,6 +109,20 @@ Süddeutsche, Der Spiegel, Der Standard, ORF, Tagesschau, Deutschlandfunk, Repub
 Correctiv, ...). The relay **rejects every other source URL**, and the prompt builder lists exactly
 these outlets. Edit the file to use your own.
 
+<details>
+<summary><b>The 30 allowed outlets</b> (from <code>sources.toml</code>)</summary>
+
+| Group | Outlets |
+|---|---|
+| Germany: newspapers & magazines | [taz](https://taz.de) · [Frankfurter Rundschau](https://fr.de) · [Die Zeit](https://zeit.de) · [Süddeutsche Zeitung](https://sueddeutsche.de) · [Der Spiegel](https://spiegel.de) · [Tagesspiegel](https://tagesspiegel.de) |
+| Germany: public broadcasting | [Tagesschau](https://tagesschau.de) · [Deutschlandfunk](https://deutschlandfunk.de) · [ZDF](https://zdf.de) · [ARD](https://ard.de) · [NDR](https://ndr.de) |
+| Germany: independent, investigative, media criticism | [netzpolitik.org](https://netzpolitik.org) · [Correctiv](https://correctiv.org) · [FragDenStaat](https://fragdenstaat.de) · [Volksverpetzer](https://volksverpetzer.de) · [Übermedien](https://uebermedien.de) · [Belltower.News](https://belltower.news) · [Krautreporter](https://krautreporter.de) |
+| Austria | [Der Standard](https://derstandard.at) · [ORF](https://orf.at) · [Falter](https://falter.at) · [Profil](https://profil.at) · [Dossier](https://dossier.at) · [ZackZack](https://zackzack.at) |
+| Switzerland | [Tages-Anzeiger](https://tagesanzeiger.ch) · [Berner Zeitung](https://bernerzeitung.ch) · [Der Bund](https://derbund.ch) · [Republik](https://republik.ch) · [Watson](https://watson.ch) |
+| Other | [zufron.com](https://zufron.com) |
+
+</details>
+
 **Prompt** — language, region, topics and time in one command:
 
 ```sh
