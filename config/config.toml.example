@@ -14,6 +14,11 @@ catchup_window_days = 7
 
 # Discord: bot mode (token via `sudo newsrelay set-bot-token`) posts into this channel.
 discord_channel_id = ""
+# Show the bot as online (newsrelay-presence.service); purely cosmetic, posting never depends on it.
+discord_presence = true
+discord_presence_status = "online"            # online | idle | dnd
+discord_presence_activity_type = "watching"   # playing | listening | watching | competing
+discord_presence_text = "the news"
 # webhook mode only (fallback when no bot is configured)
 discord_username = "News Update"
 max_message_chars = 1850

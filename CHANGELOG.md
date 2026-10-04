@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.0 — 2026-10-04
+
+- `newsrelay-presence.service`: keeps the bot **online** in Discord (Gateway session, intents 0,
+  configurable status/activity), self-healing, no DB access. New dependency `websockets` 17.1.
+- `status` shows the presence state.
+
 ## 1.3.0 — 2026-10-04
 
 - **Source allowlist** in `src/newsrelay/sources.toml` (30 outlets), enforced by the relay: candidates

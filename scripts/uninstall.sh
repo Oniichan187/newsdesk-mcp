@@ -12,7 +12,7 @@ for a in "$@"; do
     *) echo "unknown option $a" >&2; exit 2 ;;
   esac
 done
-UNITS="newsrelay-api.service newsrelay-worker.service newsrelay-maintenance.timer newsrelay-maintenance.service newsrelay-healthcheck.timer newsrelay-healthcheck.service"
+UNITS="newsrelay-api.service newsrelay-worker.service newsrelay-presence.service newsrelay-maintenance.timer newsrelay-maintenance.service newsrelay-healthcheck.timer newsrelay-healthcheck.service"
 systemctl disable --now $UNITS 2>/dev/null || true
 for u in $UNITS; do rm -f "/etc/systemd/system/$u"; done
 systemctl daemon-reload

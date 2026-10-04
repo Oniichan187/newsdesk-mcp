@@ -81,6 +81,14 @@ failed|uncertain ─operator─> pending (resend/requeue) | delivered | cancelle
 - Webhook mode (fallback): no server-side de-duplication; ambiguous sends are **never** resent
   automatically.
 
+## Bot presence
+
+`newsrelay-presence.service` keeps one Discord Gateway session (intents 0, no message content) so the
+bot is shown online with an activity. It is cosmetic and isolated: no database access
+(`InaccessiblePaths=/var/lib/newsrelay`), posting never depends on it. Heartbeats with ACK check
+(zombie detection), RESUME after reconnect requests, re-IDENTIFY after invalid sessions, exponential
+backoff with jitter, and a one-hour pause on fatal close codes (e.g. 4004 bad token).
+
 ## Liveness and readiness
 
 | Unit | READY=1 when | WATCHDOG=1 while |

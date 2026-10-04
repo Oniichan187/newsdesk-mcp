@@ -13,6 +13,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -123,6 +124,12 @@ def cmd_worker(cfg: Config, _a: argparse.Namespace) -> int:
     return worker.main(cfg)
 
 
+def cmd_presence(cfg: Config, _a: argparse.Namespace) -> int:
+    from .publishing import presence
+
+    return presence.main(cfg)
+
+
 def cmd_migrate(cfg: Config, a: argparse.Namespace) -> int:
     path = Path(a.db) if a.db else cfg.db_path
     conn = connect(path)
@@ -216,6 +223,16 @@ def cmd_restore_test(cfg: Config, a: argparse.Namespace) -> int:
     return 0 if res["ok"] else 2
 
 
+def _presence_state(cfg: Config) -> str:
+    if not cfg.discord_presence:
+        return "disabled"
+    try:
+        state, since = (cfg.runtime_dir / "presence.state").read_text().split()
+    except (FileNotFoundError, ValueError):
+        return "not running"
+    return f"{state} (since {timeutil.to_iso(datetime.fromtimestamp(int(since), UTC))})"
+
+
 def cmd_status(cfg: Config, _a: argparse.Namespace) -> int:
     """One-screen operator view (no secrets)."""
     from . import service
@@ -236,6 +253,7 @@ def cmd_status(cfg: Config, _a: argparse.Namespace) -> int:
         "discord_mode": h["discord_mode"],
         "discord_configured": h["discord_configured"],
         "discord_status": h["discord_status"],
+        "discord_presence": _presence_state(cfg),
         "research_checkpoint": h["last_checkpoint"],
         "delivery": h["delivery"],
         "db_bytes": db_bytes,
@@ -431,6 +449,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("api")
     sub.add_parser("worker")
+    sub.add_parser("presence")
     mg = sub.add_parser("migrate")
     mg.add_argument("--db", help="migrate this database file instead of the configured one")
     uc = sub.add_parser("upgrade-check")
@@ -479,6 +498,7 @@ def main(argv: list[str] | None = None) -> int:
     handlers = {
         "api": cmd_api,
         "worker": cmd_worker,
+        "presence": cmd_presence,
         "migrate": cmd_migrate,
         "maintenance": cmd_maintenance,
         "backup": cmd_backup,

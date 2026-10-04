@@ -60,7 +60,7 @@ logging is disabled at the transport module.
 ## Dependencies
 
 - Direct runtime deps: `mcp` (official MCP SDK), `uvicorn`, `starlette`, `pydantic`, `httpx2`,
-  `rapidfuzz`. `httpx2`/`httpcore2` are Pydantic's continuation of httpx (github.com/pydantic/httpx2)
+  `rapidfuzz`, `websockets` (bot presence). `httpx2`/`httpcore2` are Pydantic's continuation of httpx (github.com/pydantic/httpx2)
   and a required dependency of `mcp` 2.3; `mcp-types` is published by the MCP project itself.
   Provenance checked 2026-10-03 (see VERIFICATION.md).
 - `requirements.lock`: pip-tools, exact pins, SHA-256 for every distribution on PyPI. The installer
@@ -74,6 +74,9 @@ Dedicated `newsrelay` system user (no login shell, no home), code root-owned and
 `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, `PrivateDevices`, `NoNewPrivileges`, empty
 capability set, `MemoryDenyWriteExecute`, `SystemCallFilter=@system-service`, namespaces/realtime/SUID
 restricted, `UMask=0077`, memory/task limits. `systemd-analyze security`: api 1.1, worker 1.3 (OK).
+
+The presence service holds the bot token only in memory, sends it only in the Gateway IDENTIFY /
+RESUME frames over TLS, requests no intents (cannot read messages) and cannot access the database.
 
 ## Prompt injection
 

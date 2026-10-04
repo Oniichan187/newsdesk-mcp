@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "newsrelay"
-version = "1.3.0"
+version = "1.4.0"
 description = "ChatGPT -> Discord news relay: dedup memory, durable outbox, MCP interface"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -16,6 +16,7 @@ dependencies = [
     "pydantic>=2.13,<3",
     "httpx2>=2.13",
     "rapidfuzz>=3.14,<4",
+    "websockets>=17.1,<18",
 ]
 
 [project.optional-dependencies]

@@ -48,6 +48,11 @@ class Config:
     # Bot mode (preferred): token comes from the discord_bot_token credential, channel id is public.
     discord_channel_id: str = ""
     discord_username: str = "News Update"  # webhook mode only
+    # Bot shown as online via a Gateway session (newsrelay-presence.service); purely cosmetic.
+    discord_presence: bool = True
+    discord_presence_status: str = "online"  # online | idle | dnd
+    discord_presence_activity_type: str = "watching"  # playing | listening | watching | competing
+    discord_presence_text: str = "the news"
     max_message_chars: int = 1850
     suppress_link_embeds: bool = True
     min_send_interval_s: float = 2.5

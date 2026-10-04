@@ -1,0 +1,60 @@
+[Unit]
+Description=News Relay Discord presence (shows the bot online; posting does not depend on it)
+Documentation=file:///opt/newsrelay/current/src/docs/CUSTOMIZING.md
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+[Service]
+Type=notify
+NotifyAccess=main
+User=newsrelay
+Group=newsrelay
+Environment=NEWSRELAY_CONFIG=/etc/newsrelay/config.toml PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+ExecStart=/opt/newsrelay/current/venv/bin/newsrelay presence
+LoadCredential=discord_bot_token:/etc/newsrelay/secrets/discord_bot_token
+Restart=on-failure
+RestartSec=30
+TimeoutStartSec=60
+TimeoutStopSec=20
+WatchdogSec=120
+
+RuntimeDirectory=newsrelay
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=yes
+UMask=0077
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RemoveIPC=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+SystemCallErrorNumber=EPERM
+# No database access at all: the presence process only talks to the Discord Gateway.
+InaccessiblePaths=/var/lib/newsrelay
+MemoryMax=120M
+TasksMax=16
+
+[Install]
+WantedBy=multi-user.target

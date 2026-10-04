@@ -48,7 +48,8 @@ hacker group on Thursday.
 - **Never misses a day** — research checkpoints; after an outage the gap is caught up in bounded
   windows, nothing is skipped silently.
 - **Reliable Discord delivery** — durable outbox, rate-limit aware, ordered, nonce-based safe retries;
-  nothing is lost when Discord or the internet is down; never pings anyone.
+  nothing is lost when Discord or the internet is down; never pings anyone. The bot shows as
+  **online** ("Watching the news") whenever the Pi runs.
 - **Secure by default** — OAuth 2.1 (PKCE, DCR, RFC 9207), strict input validation, no arbitrary
   HTTP, secrets as systemd credentials, hardened units (`systemd-analyze security` ≈ 1.1).
 - **Set and forget** — watchdogs, health timer, verified backups, integrity checks, retention,
