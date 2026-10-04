@@ -1,8 +1,15 @@
 # Changelog
 
+## 1.3.0 — 2026-10-04
+
+- **Source allowlist** in `src/newsrelay/sources.toml` (30 outlets), enforced by the relay: candidates
+  citing other sites are flagged `SOURCE_NOT_ALLOWED`, stories citing them are rejected. Optional
+  per-installation override `/etc/newsrelay/sources.toml`.
+- `scripts/build_prompt.py` reads the same file; the separate example lists were removed.
+
 ## 1.2.2 — 2026-10-04
 
-- Editable source lists (`examples/sources/`), prompt template + `scripts/build_prompt.py` (sources, language, region, topics, time).
+- Prompt template + `scripts/build_prompt.py` (sources, language, region, topics, time).
 - New README, CUSTOMIZING guide, CONTRIBUTING, security policy, CI workflow.
 
 ## 1.2.1 — 2026-10-04

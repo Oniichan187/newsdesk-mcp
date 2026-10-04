@@ -39,6 +39,7 @@ from ..schemas import (
     StatusInput,
     Story,
 )
+from ..sources import load_allowlist
 from .auth import SCOPE, SUPPORTED_SCOPES, SqliteOAuthProvider
 
 logger = logging.getLogger("newsrelay.api")
@@ -142,7 +143,7 @@ def build_server(cfg: Config, conn: sqlite3.Connection, provider: SqliteOAuthPro
         run_key: RunKey, candidates: Annotated[list[Candidate], Field(min_length=1, max_length=40)]
     ) -> str:
         return _call(
-            lambda: service.match_candidates(conn, MatchInput(run_key=run_key, candidates=candidates))
+            lambda: service.match_candidates(conn, cfg, MatchInput(run_key=run_key, candidates=candidates))
         )
 
     @mcp.tool(
@@ -422,6 +423,8 @@ def create_app(cfg: Config, conn: sqlite3.Connection | None = None, *, enable_au
         provider = SqliteOAuthProvider(conn, cfg, read_secret(cfg, OWNER_HASH_CREDENTIAL))
         if provider.passphrase_hash is None:
             log(logger, logging.WARNING, "no owner passphrase hash configured: OAuth consent disabled")
+    allow = load_allowlist(cfg.sources_file)  # fail fast on a broken override file
+    log(logger, logging.INFO, "source allowlist loaded", origin=allow.origin, outlets=len(allow.outlets))
     mcp = build_server(cfg, conn, provider)
     hosts = [
         cfg.public_host,

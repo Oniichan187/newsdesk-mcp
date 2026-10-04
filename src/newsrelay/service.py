@@ -21,6 +21,7 @@ from .logutil import log
 from .publishing import outbox
 from .publishing.formatter import build_payloads
 from .schemas import BeginRunInput, MatchInput, NoopInput, PublishInput, StatusInput, Story
+from .sources import load_allowlist
 
 logger = logging.getLogger("newsrelay.service")
 
@@ -164,14 +165,31 @@ def begin_run(conn: sqlite3.Connection, cfg: Config, inp: BeginRunInput) -> dict
 # --------------------------------------------------------------------------- match (read-only)
 
 
-def match_candidates(conn: sqlite3.Connection, inp: MatchInput) -> dict[str, Any]:
+def _disallowed(cfg: Config, urls: list[str]) -> list[str]:
+    allow = load_allowlist(cfg.sources_file)
+    return sorted({url_domain(u) for u in urls if not allow.is_allowed(u)})
+
+
+def match_candidates(conn: sqlite3.Connection, cfg: Config, inp: MatchInput) -> dict[str, Any]:
     run = _find_run(conn, inp.run_key)
     if run is not None:
         raise RelayError(f"run {inp.run_key} is already {run['status']}")
     ids = [c.candidate_id for c in inp.candidates]
     if len(set(ids)) != len(ids):
         raise RelayError("candidate_id values must be unique within a request")
-    results = [match_candidate(conn, c) for c in inp.candidates]
+    results = []
+    for c in inp.candidates:
+        bad = _disallowed(cfg, list(c.source_urls))
+        if bad:
+            results.append(
+                {
+                    "candidate_id": c.candidate_id,
+                    "classification": "SOURCE_NOT_ALLOWED",
+                    "reason": f"not on the source allowlist: {', '.join(bad)}; cite only allowed outlets",
+                }
+            )
+        else:
+            results.append(match_candidate(conn, c))
     summary: dict[str, int] = {}
     for r in results:
         summary[r["classification"]] = summary.get(r["classification"], 0) + 1
@@ -227,6 +245,13 @@ def _store_story(
     conn: sqlite3.Connection, cfg: Config, run: sqlite3.Row, batch_id: str, story: Story, seq_start: int
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None, int]:
     """Returns (accepted_info, rejected_info, next_seq)."""
+    bad = _disallowed(cfg, [s.url for s in story.sources])
+    if bad:
+        return (
+            None,
+            {"candidate_id": story.candidate_id, "reason": f"SOURCE_NOT_ALLOWED: {', '.join(bad)}"},
+            seq_start,
+        )
     now_s = timeutil.now_iso()
     cfp = facts_fingerprint(story.key_facts)
     dup = conn.execute(

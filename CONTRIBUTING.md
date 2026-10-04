@@ -1,7 +1,7 @@
 # Contributing
 
-Thanks for helping! Issues and pull requests are welcome — especially new **source lists**
-(`examples/sources/*.txt`), translations of the post layout, and dedup test cases.
+Thanks for helping! Issues and pull requests are welcome — especially translations of the post
+layout, dedup test cases, and fixes to outlet domains in `src/newsrelay/sources.toml`.
 
 ## Ground rules
 

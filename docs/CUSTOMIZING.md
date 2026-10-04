@@ -1,34 +1,41 @@
 # Customizing your news desk
 
-Almost everything editorial lives in the **ChatGPT task prompt**; everything operational lives in
-**`/etc/newsrelay/config.toml`** on the Pi. You rarely need to touch code.
+The allowed outlets live in **`src/newsrelay/sources.toml`**, the editorial instructions in the
+**ChatGPT task prompt**, everything operational in **`/etc/newsrelay/config.toml`** on the Pi.
 
-## 1. Sources
+## 1. Sources (allowlist)
 
-Source lists are plain text files, one outlet per line (`#` = comment):
+The outlets that may be used are defined in **[`src/newsrelay/sources.toml`](../src/newsrelay/sources.toml)**
+— one entry per outlet with its domains:
 
-| File | Focus |
-|---|---|
-| [`examples/sources/dach-quality-press.txt`](../examples/sources/dach-quality-press.txt) | German-language quality press & public broadcasters (DE/AT/CH) — **default** |
-| [`examples/sources/international.txt`](../examples/sources/international.txt) | Wire services, BBC/DW/NPR, Guardian, FT, Economist … |
-| [`examples/sources/tech-security.txt`](../examples/sources/tech-security.txt) | Tech, AI, security, digital rights |
-
-Copy one, edit it, then build your prompt:
-
-```sh
-cp examples/sources/dach-quality-press.txt my-sources.txt     # add/remove outlets
-python3 scripts/build_prompt.py --sources my-sources.txt > my-task-prompt.md
+```toml
+[[source]]
+name = "Der Standard"
+domains = ["derstandard.at", "derstandard.de"]   # subdomains (www., ...) are included automatically
 ```
 
-Paste `my-task-prompt.md` into your Scheduled Task (edit the existing task in ChatGPT and replace the
-prompt). Names are enough; add a domain in brackets if a name is ambiguous, e.g. `Profil (profil.at)`.
-Long lists make each run slower and more expensive for ChatGPT — 15–30 sources is a good range.
+This one file drives both sides:
+
+- **The relay enforces it.** Candidates citing other sites come back as `SOURCE_NOT_ALLOWED`, and a
+  story with any non-listed source URL is rejected at publish time. Lookalikes such as
+  `taz.de.evil.com` or `eviltaz.de` do not match.
+- **The prompt lists it.** `scripts/build_prompt.py` reads the same file, so ChatGPT is told to go
+  through exactly these outlets.
+
+To change it:
+
+| Where | When |
+|---|---|
+| edit `src/newsrelay/sources.toml`, then `sudo sh scripts/update.sh` | your fork / your repo |
+| copy it to `/etc/newsrelay/sources.toml`, edit, `sudo systemctl restart newsrelay-api` | one installation, no code change |
+
+Afterwards regenerate the prompt (`python3 scripts/build_prompt.py --sources <file> > my-task-prompt.md`)
+and replace it in your ChatGPT task. 15-30 outlets is a good range; long lists make runs slower.
 
 ## 2. Language, region, topics, time
 
 ```sh
 python3 scripts/build_prompt.py \
-  --sources examples/sources/international.txt \
   --language German \
   --region "Germany and the EU" \
   --topics "AI, science, climate, energy" \
@@ -37,7 +44,7 @@ python3 scripts/build_prompt.py \
 
 | Option | Default | Effect |
 |---|---|---|
-| `--sources` | DACH list | which outlets ChatGPT goes through |
+| `--sources` | `src/newsrelay/sources.toml` | allowlist file the outlets are read from |
 | `--language` | English | language of headlines and post bodies |
 | `--region` | Austria/Europe | whose perspective decides what is important |
 | `--topics` | broad list | narrow or widen the scope |

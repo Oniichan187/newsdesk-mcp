@@ -153,6 +153,7 @@ def cmd_upgrade_check(cfg: Config, a: argparse.Namespace) -> int:
         service.begin_run(conn, test_cfg, BeginRunInput(run_key="upgrade-check/2000-01-01"))
         service.match_candidates(
             conn,
+            test_cfg,
             MatchInput.model_validate(
                 {
                     "run_key": "upgrade-check/2000-01-01",
@@ -162,7 +163,7 @@ def cmd_upgrade_check(cfg: Config, a: argparse.Namespace) -> int:
                             "title": "Upgrade smoke test",
                             "category": "other",
                             "key_facts": ["upgrade smoke test fact"],
-                            "source_urls": ["https://example.org/upgrade-check"],
+                            "source_urls": ["https://www.tagesschau.de/upgrade-check"],
                         }
                     ],
                 }

@@ -23,6 +23,8 @@
   credentials, tz-aware timestamps, no control characters. Unknown top-level tool arguments are
   rejected by an MCP middleware (the SDK would silently ignore them). Bodies > 256 KiB are refused
   with 413 for every route, including chunked uploads without Content-Length.
+- Source allowlist (`sources.toml`): stories may only cite listed outlets (exact domain or
+  subdomain; lookalike domains rejected), so a prompt-injected page cannot get itself linked.
 - Discord output: `allowed_mentions: {"parse": []}` plus textual neutralizing of `@everyone`,
   `@here`, `<@…>`, `<@&…>`, so injected text can never ping. Link embeds suppressed.
 

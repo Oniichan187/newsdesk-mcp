@@ -11,13 +11,22 @@ from newsrelay.database import connect, current_version, migrate, open_db
 from newsrelay.dedup.matcher import EXACT_DUPLICATE, LIKELY_DUPLICATE, NO_MATCH, POSSIBLE_EXISTING_TOPIC
 from newsrelay.schemas import BeginRunInput, Candidate, MatchInput, NoopInput, PublishInput, StatusInput
 
+_CFG: dict = {}
+
+
+@pytest.fixture(autouse=True)
+def _bind_cfg(cfg):
+    _CFG["cfg"] = cfg
+
 
 def begin(conn, cfg, key="daily-news/2026-10-03"):
     return service.begin_run(conn, cfg, BeginRunInput(run_key=key))
 
 
 def match(conn, key, *cands):
-    return service.match_candidates(conn, MatchInput(run_key=key, candidates=list(cands)))["results"]
+    return service.match_candidates(conn, _CFG["cfg"], MatchInput(run_key=key, candidates=list(cands)))[
+        "results"
+    ]
 
 
 def outbox_count(conn):
@@ -185,7 +194,7 @@ def test_e_archived_topic_found_without_bulk_history(cfg, conn, clock):  # TEST 
                 headline=f"Filler event {i}-{j} about town council number {i * 10 + j}",
                 key_facts=[f"Town council {i * 10 + j} approved budget item {j}"],
                 entities=[f"Town{i * 10 + j}"],
-                sources=[{"url": f"https://example{i}.org/n/{j}"}],
+                sources=[{"url": f"https://n{i}.example.org/n/{j}"}],
             )
             for j in range(10)
         ]

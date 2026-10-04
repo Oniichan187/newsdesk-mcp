@@ -37,9 +37,21 @@ def clock() -> Iterator[Clock]:
     timeutil.set_clock(None)
 
 
+# Built-in allowlist plus the neutral domains used by tests.
+TEST_EXTRA_SOURCES = """
+[[source]]
+name = "Test outlets"
+domains = ["example.org", "example.com", "heise.de", "cisa.gov", "127.0.0.1"]
+"""
+
+
 @pytest.fixture
 def cfg(tmp_path: Path) -> Config:
+    from importlib import resources
+
     (tmp_path / "secrets").mkdir()
+    builtin = (resources.files("newsrelay") / "sources.toml").read_text(encoding="utf-8")
+    (tmp_path / "sources.toml").write_text(builtin + TEST_EXTRA_SOURCES, encoding="utf-8")
     return Config(
         db_path=tmp_path / "newsrelay.db",
         backup_dir=tmp_path / "backups",
@@ -49,6 +61,7 @@ def cfg(tmp_path: Path) -> Config:
         min_send_interval_s=0.0,
         min_free_disk_mb=1,
         allowed_redirect_prefixes=("https://chatgpt.com/connector_platform_oauth_redirect",),
+        sources_file=tmp_path / "sources.toml",
     )
 
 

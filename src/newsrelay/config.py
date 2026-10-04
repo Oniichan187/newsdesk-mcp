@@ -65,6 +65,8 @@ class Config:
     min_free_disk_mb: int = 200
     display_timezone: str = "Europe/Vienna"
     secret_dir_override: Path | None = field(default=None)
+    # Optional local replacement for the built-in source allowlist (newsrelay/sources.toml).
+    sources_file: Path | None = Path("/etc/newsrelay/sources.toml")
 
     @property
     def mcp_resource_url(self) -> str:
@@ -79,7 +81,7 @@ class Config:
 
 # Keys accepted (and ignored) for compatibility with configs written by older versions.
 DEPRECATED_KEYS = {"max_lookback_days", "stale_run_hours", "max_pending_age_hours"}
-_PATH_FIELDS = {"db_path", "backup_dir", "runtime_dir", "secret_dir_override"}
+_PATH_FIELDS = {"db_path", "backup_dir", "runtime_dir", "secret_dir_override", "sources_file"}
 _TUPLE_FIELDS = {"extra_allowed_hosts", "allowed_redirect_prefixes"}
 
 

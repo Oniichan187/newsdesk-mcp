@@ -53,7 +53,8 @@ hacker group on Thursday.
   HTTP, secrets as systemd credentials, hardened units (`systemd-analyze security` ≈ 1.1).
 - **Set and forget** — watchdogs, health timer, verified backups, integrity checks, retention,
   safe upgrades with automatic rollback.
-- **Your sources, your language** — swap source lists, language, region and topics with one command.
+- **Only the sources you allow** — an enforced allowlist of outlets; language, region and topics of
+  the posts are set with one command.
 
 ## 🧭 How it works
 
@@ -101,14 +102,20 @@ sudo cat /etc/newsrelay/secrets/owner_passphrase.txt
 
 ## 🎛️ Make it yours
 
+**Sources** — the outlets that may be used are an allowlist in
+[`src/newsrelay/sources.toml`](src/newsrelay/sources.toml): 30 German-language quality outlets, public
+broadcasters and independent newsrooms from Germany, Austria and Switzerland (taz, Die Zeit,
+Süddeutsche, Der Spiegel, Der Standard, ORF, Tagesschau, Deutschlandfunk, Republik, netzpolitik.org,
+Correctiv, ...). The relay **rejects every other source URL**, and the prompt builder lists exactly
+these outlets. Edit the file to use your own.
+
+**Prompt** — language, region, topics and time in one command:
+
 ```sh
-python3 scripts/build_prompt.py --sources examples/sources/international.txt \
-    --language German --region "Germany and the EU" --time 07:00 > my-task-prompt.md
+python3 scripts/build_prompt.py --language German --region "Germany and the EU" --time 07:00 > my-task-prompt.md
 ```
 
-Ready-made source lists in [`examples/sources/`](examples/sources): German-language quality press
-(default), international, tech & security — copy one and edit it. Everything else (channel, layout,
-memory, retention) is explained in [CUSTOMIZING.md](docs/CUSTOMIZING.md).
+Everything else (channel, layout, memory, retention): [CUSTOMIZING.md](docs/CUSTOMIZING.md).
 
 ## 🛠️ Operating it
 

@@ -1,0 +1,135 @@
+# Allowed news sources (allowlist).
+#
+# Only articles on these domains — or their subdomains (www., news., …) — may be cited in a story.
+# The relay rejects any other source URL, and scripts/build_prompt.py tells ChatGPT to go through
+# exactly this list. Primary sources (courts, parliaments, agencies) may still be *read* to verify
+# facts, but posts link only to these outlets.
+#
+# To change the list for your own installation without touching the code, copy this file to
+# /etc/newsrelay/sources.toml, edit it, and restart: sudo systemctl restart newsrelay-api
+
+# --- Germany: newspapers & magazines
+[[source]]
+name = "taz"
+domains = ["taz.de"]
+
+[[source]]
+name = "Frankfurter Rundschau"
+domains = ["fr.de"]
+
+[[source]]
+name = "Die Zeit"
+domains = ["zeit.de"]
+
+[[source]]
+name = "Süddeutsche Zeitung"
+domains = ["sueddeutsche.de", "sz.de"]
+
+[[source]]
+name = "Der Spiegel"
+domains = ["spiegel.de"]
+
+[[source]]
+name = "Tagesspiegel"
+domains = ["tagesspiegel.de"]
+
+# --- Germany: public broadcasting
+[[source]]
+name = "Tagesschau"
+domains = ["tagesschau.de"]
+
+[[source]]
+name = "Deutschlandfunk"
+domains = ["deutschlandfunk.de", "deutschlandfunkkultur.de", "deutschlandfunknova.de"]
+
+[[source]]
+name = "ZDF"
+domains = ["zdf.de", "zdfheute.de"]
+
+[[source]]
+name = "ARD"
+domains = ["ard.de", "ardmediathek.de", "ardaudiothek.de"]
+
+[[source]]
+name = "NDR"
+domains = ["ndr.de"]
+
+# --- Germany: independent, investigative, media criticism
+[[source]]
+name = "netzpolitik.org"
+domains = ["netzpolitik.org"]
+
+[[source]]
+name = "Correctiv"
+domains = ["correctiv.org"]
+
+[[source]]
+name = "FragDenStaat"
+domains = ["fragdenstaat.de"]
+
+[[source]]
+name = "Volksverpetzer"
+domains = ["volksverpetzer.de"]
+
+[[source]]
+name = "Übermedien"
+domains = ["uebermedien.de"]
+
+[[source]]
+name = "Belltower.News"
+domains = ["belltower.news"]
+
+[[source]]
+name = "Krautreporter"
+domains = ["krautreporter.de"]
+
+# --- Austria
+[[source]]
+name = "Der Standard"
+domains = ["derstandard.at", "derstandard.de"]
+
+[[source]]
+name = "ORF"
+domains = ["orf.at"]
+
+[[source]]
+name = "Falter"
+domains = ["falter.at"]
+
+[[source]]
+name = "Profil"
+domains = ["profil.at"]
+
+[[source]]
+name = "Dossier"
+domains = ["dossier.at"]
+
+[[source]]
+name = "ZackZack"
+domains = ["zackzack.at"]
+
+# --- Switzerland
+[[source]]
+name = "Tages-Anzeiger"
+domains = ["tagesanzeiger.ch"]
+
+[[source]]
+name = "Berner Zeitung"
+domains = ["bernerzeitung.ch"]
+
+[[source]]
+name = "Der Bund"
+domains = ["derbund.ch"]
+
+[[source]]
+name = "Republik"
+domains = ["republik.ch"]
+
+[[source]]
+name = "Watson"
+domains = ["watson.ch", "watson.de"]
+
+# --- Other
+[[source]]
+name = "zufron.com"
+domains = ["zufron.com"]

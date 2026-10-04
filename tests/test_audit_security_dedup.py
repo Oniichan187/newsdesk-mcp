@@ -241,10 +241,18 @@ def test_public_endpoints_expose_no_internals(live):
 # ---------------------------------------------------------------- adversarial dedup
 
 
+_CFG: dict = {}
+
+
+@pytest.fixture(autouse=True)
+def _bind_cfg(cfg):
+    _CFG["cfg"] = cfg
+
+
 def _match(conn, cand):
-    return service.match_candidates(conn, MatchInput(run_key="daily-news/2026-12-01", candidates=[cand]))[
-        "results"
-    ][0]
+    return service.match_candidates(
+        conn, _CFG["cfg"], MatchInput(run_key="daily-news/2026-12-01", candidates=[cand])
+    )["results"][0]
 
 
 @pytest.fixture

@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Build your personal Scheduled Task prompt from the template.
+"""Build the Scheduled Task prompt from the template and the source allowlist.
+
+The list of outlets comes from the same file the relay enforces: src/newsrelay/sources.toml
+(or your own copy, e.g. /etc/newsrelay/sources.toml), so the prompt and the server always agree.
 
 Examples:
-    python3 scripts/build_prompt.py                                   # default: DACH quality press
-    python3 scripts/build_prompt.py --sources examples/sources/international.txt --language English \
-        --region "Europe and North America" --time 07:00 --timezone Europe/London
-    python3 scripts/build_prompt.py --sources my-sources.txt > my-task-prompt.txt
+    python3 scripts/build_prompt.py                                   # built-in list, English, 18:00
+    python3 scripts/build_prompt.py --language German --time 07:00
+    python3 scripts/build_prompt.py --sources /etc/newsrelay/sources.toml > my-task-prompt.md
 
-A sources file has one outlet per line; blank lines and lines starting with '#' are ignored.
 Only the Python standard library is used.
 """
 
@@ -16,11 +17,12 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE = ROOT / "prompts" / "scheduled-task.template.md"
-DEFAULT_SOURCES = ROOT / "examples" / "sources" / "dach-quality-press.txt"
+DEFAULT_SOURCES = ROOT / "src" / "newsrelay" / "sources.toml"
 DEFAULT_TOPICS = (
     "AI, tech, cybersecurity, privacy, internet policy, law, politics, war/geopolitics, science, health, "
     "economy, energy, climate, disasters, infrastructure, civil liberties, major world events"
@@ -28,11 +30,16 @@ DEFAULT_TOPICS = (
 
 
 def read_sources(path: Path) -> list[str]:
+    """Outlet names (with their domains) from a sources.toml allowlist."""
+    data = tomllib.loads(path.read_text(encoding="utf-8"))
     out: list[str] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if line and not line.startswith("#") and line not in out:
-            out.append(line)
+    for entry in data.get("source", []):
+        name = str(entry.get("name", "")).strip()
+        domains = [str(d) for d in entry.get("domains", [])]
+        if name and domains:
+            label = name if name.lower() == domains[0].lower() else f"{name} ({domains[0]})"
+            if label not in out:
+                out.append(label)
     if not out:
         raise SystemExit(f"no sources found in {path}")
     return out
@@ -64,7 +71,7 @@ def build(
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--sources", type=Path, default=DEFAULT_SOURCES, help="file with one outlet per line")
+    p.add_argument("--sources", type=Path, default=DEFAULT_SOURCES, help="sources.toml allowlist")
     p.add_argument("--language", default="English", help="language of the Discord posts")
     p.add_argument("--region", default="Austria/Europe", help="whose perspective decides importance")
     p.add_argument("--topics", default=DEFAULT_TOPICS, help="comma-separated topic scope")
