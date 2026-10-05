@@ -189,7 +189,8 @@ def reading_words(st: StoryText, country: str) -> list[tuple[str, str]]:
             add(sec.label or "Text", p)
         for b in sec.bullets:
             add(sec.label or "Text", b)
-    add("Importance", f"{st.importance} of 10. {st.importance_reason}")
+    if st.importance:  # 0 = story from before importance/impact were stored
+        add("Importance", f"{st.importance} of 10. {st.importance_reason}")
     add(f"Impact {country}", st.impact_country)
     add("Impact global", st.impact_global)
     for o in st.outlook:

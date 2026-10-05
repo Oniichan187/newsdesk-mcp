@@ -74,7 +74,7 @@ class _Doc(FPDF):
 
     # -- building blocks -------------------------------------------------------------------------
 
-    def kicker(self, text: str, color: tuple[int, int, int] = ACCENT, size: float = 7.2) -> None:
+    def kicker(self, text: str, color: tuple[int, int, int] = ACCENT, size: float = 6.6) -> None:
         self.set_font("PlexSemi", "", size)
         self.set_text_color(*color)
         self.set_char_spacing(0.9)
@@ -93,13 +93,13 @@ class _Doc(FPDF):
         if self.will_page_break(height):
             self.add_page()
 
-    def body(self, text: str, indent: float = 0.0, size: float = 10.2) -> None:
+    def body(self, text: str, indent: float = 0.0, size: float = 8.8) -> None:
         self.set_font("Plex", "", size)
         self.set_text_color(*INK)
         self.set_x(self.l_margin + indent)
         self.multi_cell(
             self.width - indent,
-            5.25,
+            4.5,
             bionic_markdown(text),
             markdown=True,
             align="L",
@@ -109,10 +109,10 @@ class _Doc(FPDF):
 
     def bullet(self, text: str) -> None:
         y = self.get_y()
-        self.set_font("Plex", "", 10.2)
+        self.set_font("Plex", "", 8.8)
         self.set_text_color(*ACCENT)
         self.set_xy(self.l_margin + 0.6, y)
-        self.cell(3, 5.25, "•")
+        self.cell(3, 4.5, "•")
         self.set_y(y)
         self.body(text, indent=4.2)
         self.ln(0.8)
@@ -125,13 +125,13 @@ class _Doc(FPDF):
 
     def scale(self, value: int) -> None:
         """Ten small squares, `value` of them filled: the importance score at a glance."""
-        size, gap = 2.6, 1.1
+        size, gap = 2.2, 1.0
         x, y = self.l_margin, self.get_y() + 0.6
         for i in range(10):
             self.set_fill_color(*(ACCENT if i < value else SCALE_OFF))
             self.rect(x + i * (size + gap), y, size, size, style="F")
         self.set_xy(x + 10 * (size + gap) + 1.5, self.get_y())
-        self.set_font("PlexSemi", "", 9)
+        self.set_font("PlexSemi", "", 8)
         self.set_text_color(*ACCENT)
         self.cell(0, 3.8, f"{value} / 10", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         self.ln(1.6)
@@ -162,14 +162,14 @@ def _build(
     doc.ln(6)
     doc.kicker(title)
     doc.ln(2.5)
-    doc.set_font("PlexHead", "", 24)
+    doc.set_font("PlexHead", "", 19)
     doc.set_text_color(*INK)
-    doc.multi_cell(0, 10, weekday, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    doc.set_font("Plex", "", 14)
+    doc.multi_cell(0, 8, weekday, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    doc.set_font("Plex", "", 11.5)
     doc.set_text_color(*MUTED)
-    doc.multi_cell(0, 7, long, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    doc.multi_cell(0, 6, long, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     doc.ln(3)
-    doc.set_font("Plex", "", 8.5)
+    doc.set_font("Plex", "", 7.6)
     n = len(stories)
     doc.multi_cell(
         0,
@@ -182,24 +182,26 @@ def _build(
     doc.kicker("Contents", MUTED, 6.8)
     doc.ln(2)
     for i, st in enumerate(stories):
-        doc.set_font("Plex", "", 9.8)
-        lines = len(doc.multi_cell(doc.width - 21, 5, st.headline, dry_run=True, output="LINES"))
-        doc.keep(lines * 5 + 4)
+        doc.set_font("Plex", "", 8.6)
+        lines = len(doc.multi_cell(doc.width - 21, 4.3, st.headline, dry_run=True, output="LINES"))
+        doc.keep(lines * 4.3 + 4)
         y = doc.get_y()
-        doc.set_font("PlexSemi", "", 9.5)
+        doc.set_font("PlexSemi", "", 8.4)
         doc.set_text_color(*ACCENT)
-        doc.cell(7, 5, f"{i + 1:02d}", link=links[i] or "")
+        doc.cell(7, 4.3, f"{i + 1:02d}", link=links[i] or "")
         doc.set_xy(doc.l_margin + 7, y)
-        doc.set_font("Plex", "", 9.8)
+        doc.set_font("Plex", "", 8.6)
         doc.set_text_color(*INK)
-        doc.multi_cell(doc.width - 21, 5, st.headline, link=links[i] or "", new_x=XPos.RIGHT, new_y=YPos.TOP)
+        doc.multi_cell(
+            doc.width - 21, 4.3, st.headline, link=links[i] or "", new_x=XPos.RIGHT, new_y=YPos.TOP
+        )
         doc.set_xy(doc.w - doc.r_margin - 13, y)
-        doc.set_font("PlexSemi", "", 8.5)
+        doc.set_font("PlexSemi", "", 7.6)
         doc.set_text_color(*MUTED)
-        doc.cell(13, 5, f"{st.importance}/10", align="R")
-        doc.set_y(y + lines * 5 + 3.5)
+        doc.cell(13, 4.3, f"{st.importance}/10", align="R")
+        doc.set_y(y + lines * 4.3 + 3)
     doc.ln(4)
-    doc.set_font("Plex", "I", 7.8)
+    doc.set_font("Plex", "I", 7)
     doc.set_text_color(*MUTED)
     doc.multi_cell(
         0,
@@ -216,14 +218,14 @@ def _build(
         kick = " · ".join(x for x in ("Update" if st.kind == "UPDATE" else "Correction" if st.kind == "CORRECTION" else "", st.category, st.region) if x)  # fmt: skip
         doc.kicker(kick)
         doc.ln(1.5)
-        doc.set_font("PlexHead", "", 15)
+        doc.set_font("PlexHead", "", 12.5)
         doc.set_text_color(*INK)
-        doc.multi_cell(0, 6.6, st.headline, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        doc.multi_cell(0, 5.5, st.headline, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         doc.ln(1.5)
-        doc.set_font("Plex", "", 8)
+        doc.set_font("Plex", "", 7.2)
         doc.set_text_color(*MUTED)
         meta = [st.date, f"Importance {st.importance}/10"] + ([st.confidence] if st.confidence else [])
-        doc.multi_cell(0, 4, "  ·  ".join(meta), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        doc.multi_cell(0, 3.6, "  ·  ".join(meta), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         doc.rule(2.5, 2)
 
         for sec in st.sections:
@@ -246,21 +248,21 @@ def _build(
             doc.label("Outlook")
             for o in st.outlook:
                 doc.keep(12)
-                doc.set_font("PlexSemi", "", 9.6)
+                doc.set_font("PlexSemi", "", 8.4)
                 doc.set_text_color(*ACCENT)
-                doc.multi_cell(0, 5, o.likelihood, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                doc.multi_cell(0, 4.3, o.likelihood, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
                 doc.body(o.event)
-                doc.set_font("Plex", "I", 8.6)
+                doc.set_font("Plex", "I", 7.6)
                 doc.set_text_color(*MUTED)
-                doc.multi_cell(0, 4.4, f"Basis: {o.basis}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                doc.multi_cell(0, 3.9, f"Basis: {o.basis}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
                 doc.ln(1.8)
         doc.label("Sources")
         for name, url in st.sources:
-            doc.set_font("PlexSemi", "", 9)
+            doc.set_font("PlexSemi", "", 8)
             doc.set_text_color(*ACCENT)
-            doc.multi_cell(0, 4.8, name, link=url, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-            doc.set_font("Plex", "", 7.4)
+            doc.multi_cell(0, 4.2, name, link=url, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            doc.set_font("Plex", "", 6.6)
             doc.set_text_color(*MUTED)
-            doc.multi_cell(0, 3.8, url, link=url, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            doc.multi_cell(0, 3.4, url, link=url, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
             doc.ln(1.2)
     return doc, starts

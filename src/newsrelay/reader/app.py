@@ -80,7 +80,11 @@ def create_reader_app(cfg: Config) -> Starlette:
         data = [
             {
                 "headline": s.headline,
-                "meta": " · ".join(x for x in (s.category, s.region, f"Importance {s.importance}/10") if x),
+                "meta": " · ".join(
+                    x
+                    for x in (s.category, s.region, f"Importance {s.importance}/10" if s.importance else "")
+                    if x
+                ),
                 "words": reading_words(s, cfg.reader_country),
             }
             for s in stories

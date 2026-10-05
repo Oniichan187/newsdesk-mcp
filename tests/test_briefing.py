@@ -176,6 +176,19 @@ def test_webhook_upload_and_missing_file_falls_back_to_text(tmp_path):
 # --------------------------------------------------------------------------- reader
 
 
+def test_stories_from_before_schema_3_are_still_readable(cfg, conn, clock):
+    service.publish_digest(conn, cfg, publish_input("daily-news/2026-10-03", [_rich()]))
+    conn.execute("UPDATE stories SET story_json = NULL")  # as published by 1.7.0 and older
+    from newsrelay.briefing.store import days
+
+    assert days(conn, cfg) == [(date(2026, 10, 3), 1)]
+    (st,) = day_stories(conn, cfg, date(2026, 10, 3))
+    assert st.headline.startswith("EU fines Meta") and st.importance == 0
+    assert st.sections[0].label == "What happened" and st.sources
+    labels = {label for label, _ in reading_words(st, "Austria")}
+    assert "Importance" not in labels and "Impact Austria" not in labels
+
+
 def test_reader_pages(cfg, conn, clock):
     cfg = dataclasses.replace(cfg, briefing_pdf=True)
     service.publish_digest(conn, cfg, publish_input("daily-news/2026-10-03", [_rich()]))
