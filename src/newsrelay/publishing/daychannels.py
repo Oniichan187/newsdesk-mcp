@@ -122,7 +122,7 @@ class DayChannels:
         self.conn = conn
         self.api = api
         self._channels: dict[str, dict[str, Any]] = {}
-        self._layout_at = 0.0
+        self._layout_at: float | None = None  # None = never read (monotonic() starts at boot)
         self._failed_until = 0.0
 
     # -- layout --------------------------------------------------------------------------------
@@ -176,7 +176,8 @@ class DayChannels:
             guild_id = str(self.api.get_channel(category)["guild_id"])
             self._set_meta("daily_guild_id", guild_id)
             self._set_meta("daily_guild_category", category)
-        if time.monotonic() - self._layout_at > LAYOUT_TTL_S or category not in self._channels:
+        stale = self._layout_at is None or time.monotonic() - self._layout_at > LAYOUT_TTL_S
+        if stale or category not in self._channels:
             self._refresh(guild_id)
         if self._channels.get(category, {}).get("type") != GUILD_CATEGORY:
             raise ValueError("discord_daily_category_id is not a category of this server")

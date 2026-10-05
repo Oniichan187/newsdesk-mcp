@@ -194,6 +194,22 @@ def test_missing_permission_falls_back_to_fixed_channel(cfg, conn, clock):
     assert conn.execute("SELECT state FROM outbox").fetchone()[0] == "delivered"
 
 
+def test_archive_runs_right_after_boot(cfg, conn, clock, monkeypatch):
+    """Regression: time.monotonic() starts near 0 on a fresh host (e.g. a CI runner)."""
+    import newsrelay.publishing.worker as worker_mod
+
+    cfg = _cfg(cfg)
+    guild, bot = FakeGuild(), FakeBot()
+    w = Worker(cfg, conn, bot, days=DayChannels(cfg, conn, guild))
+    for day in (3, 4, 5):
+        _publish(conn, cfg, day)
+        _drain(w)
+        clock.advance(days=1)
+    monkeypatch.setattr(worker_mod.time, "monotonic", lambda: 5.0)
+    assert w.maintain_days() == 1
+    assert w.maintain_days() == 0  # the next check waits ARCHIVE_CHECK_S
+
+
 @pytest.mark.parametrize("category", ["", "100000000000000077", FIXED])  # unset, unknown, not a category
 def test_without_valid_category_posts_go_to_fixed_channel(cfg, conn, clock, category):
     cfg = _cfg(cfg, category)
