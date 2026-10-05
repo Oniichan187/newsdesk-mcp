@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.8.0 — 2026-10-06
+
+- **Briefing PDF** before each run's stories: phone-sized pages (108 x 192 mm), IBM Plex Serif, no
+  emoji, linked contents, importance scale, Impact/Outlook sections, clickable sources and **Bionic
+  Reading** body text. Uploaded as an attachment (bot and webhook); a failed render never blocks the
+  stories. Settings `briefing_pdf`, `briefing_dir`.
+- **RSVP speed reader** (`newsrelay reader`, `newsrelay-reader.service`): one page per day,
+  100–2000 words per minute, pivot-letter alignment, punctuation pauses, context line, keyboard and
+  touch controls, remembers speed and position, links the day's PDFs. Read-only, localhost only;
+  `scripts/expose-reader.sh` publishes it inside the tailnet (`tailscale serve`, not Funnel).
+- Long stories are split without the `(2/2) continued` line; `max_message_chars` default 1990.
+- Schema 3: `stories.story_json` keeps the full validated story for PDF and reader.
+- New dependency: fpdf2 2.8.9 (with Pillow, fonttools, defusedxml).
+
 ## 1.7.0 — 2026-10-06
 
 - Story footer, in order: **⭐ Importance X/10** with a one-sentence reason (`importance` is now

@@ -62,10 +62,17 @@ class Config:
     discord_daily_category_id: str = ""
     discord_daily_archive: str = "🗄-archiv"
     discord_daily_keep: int = 7
+    # Reading-friendly PDF of every published run, posted before its stories.
+    briefing_pdf: bool = True
+    briefing_dir: Path = Path("/var/lib/newsrelay/briefings")
+    # RSVP speed reader (newsrelay-reader.service), localhost only; publish it inside the tailnet
+    # with scripts/expose-reader.sh. reader_url (optional) is linked under the PDF in Discord.
+    reader_listen_port: int = 8788
+    reader_url: str = ""
     # Country the readers live in; labels the "Impact <country>" line. Keep it equal to the
     # --country the task prompt was built with.
     reader_country: str = "Austria"
-    max_message_chars: int = 1850
+    max_message_chars: int = 1990  # Discord's hard limit is 2000
     suppress_link_embeds: bool = True
     min_send_interval_s: float = 2.5
     worker_poll_s: float = 15.0
@@ -98,7 +105,7 @@ class Config:
 
 # Keys accepted (and ignored) for compatibility with configs written by older versions.
 DEPRECATED_KEYS = {"max_lookback_days", "stale_run_hours", "max_pending_age_hours", "discord_daily_category"}
-_PATH_FIELDS = {"db_path", "backup_dir", "runtime_dir", "secret_dir_override", "sources_file"}
+_PATH_FIELDS = {"db_path", "backup_dir", "runtime_dir", "secret_dir_override", "sources_file", "briefing_dir"}
 _TUPLE_FIELDS = {"extra_allowed_hosts", "allowed_redirect_prefixes"}
 
 

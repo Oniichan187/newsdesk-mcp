@@ -124,6 +124,27 @@ def cmd_worker(cfg: Config, _a: argparse.Namespace) -> int:
     return worker.main(cfg)
 
 
+def cmd_reader(cfg: Config, _a: argparse.Namespace) -> int:
+    """RSVP speed reader on localhost; publish it inside the tailnet with scripts/expose-reader.sh."""
+    import uvicorn
+
+    from .reader.app import create_reader_app
+
+    log(logger, logging.INFO, "reader starting", version=__version__, port=cfg.reader_listen_port)
+    uvicorn.run(
+        create_reader_app(cfg),
+        host="127.0.0.1",
+        port=cfg.reader_listen_port,
+        log_config=None,
+        access_log=False,
+        server_header=False,
+        proxy_headers=True,
+        forwarded_allow_ips="127.0.0.1",
+        limit_concurrency=32,
+    )
+    return 0
+
+
 def cmd_presence(cfg: Config, _a: argparse.Namespace) -> int:
     from .publishing import presence
 
@@ -450,6 +471,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("api")
     sub.add_parser("worker")
     sub.add_parser("presence")
+    sub.add_parser("reader")
     mg = sub.add_parser("migrate")
     mg.add_argument("--db", help="migrate this database file instead of the configured one")
     uc = sub.add_parser("upgrade-check")
@@ -499,6 +521,7 @@ def main(argv: list[str] | None = None) -> int:
         "api": cmd_api,
         "worker": cmd_worker,
         "presence": cmd_presence,
+        "reader": cmd_reader,
         "migrate": cmd_migrate,
         "maintenance": cmd_maintenance,
         "backup": cmd_backup,

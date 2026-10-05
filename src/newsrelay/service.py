@@ -7,11 +7,13 @@ import json
 import logging
 import secrets
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from . import __version__, timeutil
+from .briefing.pdf import long_date
+from .briefing.store import write_pdf
 from .config import Config
 from .database import SCHEMA_VERSION, check_disk, current_version, tx
 from .dedup.fingerprint import facts_fingerprint, title_fingerprint, url_hash
@@ -19,7 +21,7 @@ from .dedup.matcher import match_candidate
 from .dedup.normalize import canonical_url, normalize_text, slugify, url_domain
 from .logutil import log
 from .publishing import outbox
-from .publishing.formatter import build_payloads
+from .publishing.formatter import briefing_payload, build_payloads
 from .schemas import BeginRunInput, MatchInput, NoopInput, PublishInput, StatusInput, Story
 from .sources import load_allowlist
 
@@ -246,9 +248,15 @@ def _resolve_topic(conn: sqlite3.Connection, story: Story) -> sqlite3.Row | None
 
 
 def _store_story(
-    conn: sqlite3.Connection, cfg: Config, run: sqlite3.Row, batch_id: str, story: Story, seq_start: int
+    conn: sqlite3.Connection,
+    cfg: Config,
+    run: sqlite3.Row,
+    batch_id: str,
+    story: Story,
+    seq_start: int,
+    queue: list[tuple[str | None, int, str, str]],
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None, int]:
-    """Returns (accepted_info, rejected_info, next_seq)."""
+    """Returns (accepted_info, rejected_info, next_seq); appends the story's messages to `queue`."""
     bad = _disallowed(cfg, [s.url for s in story.sources])
     if bad:
         return (
@@ -331,8 +339,8 @@ def _store_story(
     story_id = _new_id("sto")
     conn.execute(
         "INSERT INTO stories(id, topic_id, run_id, candidate_id, kind, headline, norm_title, key_facts, "
-        "material_change, confidence, category, event_time, content_fp, title_fp, created_at, body) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "material_change, confidence, category, event_time, content_fp, title_fp, created_at, body, "
+        "story_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             story_id,
             topic_id,
@@ -350,6 +358,7 @@ def _store_story(
             title_fingerprint(story.headline),
             now_s,
             story.body,
+            story.model_dump_json(),
         ),
     )
     for src in story.sources:
@@ -371,11 +380,7 @@ def _store_story(
     seq = seq_start
     for i, payload in enumerate(payloads):
         key = hashlib.sha256(f"{run['run_key']}|{story.candidate_id}|{i}".encode()).hexdigest()
-        conn.execute(
-            "INSERT INTO outbox(batch_id, story_id, seq, idempotency_key, payload, state, created_at, "
-            "updated_at, next_attempt_at) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)",
-            (batch_id, story_id, seq, key, json.dumps(payload, ensure_ascii=False), now_s, now_s, now_s),
-        )
+        queue.append((story_id, seq, key, json.dumps(payload, ensure_ascii=False)))
         seq += 1
     return (
         {
@@ -387,6 +392,38 @@ def _store_story(
         None,
         seq,
     )
+
+
+def _day_title(day: date) -> str:
+    weekday, long = long_date(day)
+    return f"{weekday}, {long}"
+
+
+def _enqueue(
+    conn: sqlite3.Connection,
+    cfg: Config,
+    run_key: str,
+    batch_id: str,
+    published: list[Story],
+    queue: list[tuple[str | None, int, str, str]],
+) -> None:
+    """Outbox order = id order: the briefing PDF (if any) first, then the stories."""
+    now_s = timeutil.now_iso()
+    if published and cfg.briefing_pdf:
+        path = write_pdf(cfg, run_key, published)
+        if path is not None:
+            day = timeutil.now().astimezone(ZoneInfo(cfg.display_timezone)).date()
+            payload = briefing_payload(
+                str(path), f"Daily Briefing · {_day_title(day)}", len(published), cfg.reader_url
+            )
+            key = hashlib.sha256(f"{run_key}|briefing-pdf".encode()).hexdigest()
+            queue.insert(0, (None, -1, key, json.dumps(payload, ensure_ascii=False)))
+    for story_id, seq, key, payload_s in queue:
+        conn.execute(
+            "INSERT INTO outbox(batch_id, story_id, seq, idempotency_key, payload, state, created_at, "
+            "updated_at, next_attempt_at) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)",
+            (batch_id, story_id, seq, key, payload_s, now_s, now_s, now_s),
+        )
 
 
 def publish_digest(conn: sqlite3.Connection, cfg: Config, inp: PublishInput) -> dict[str, Any]:
@@ -424,6 +461,8 @@ def publish_digest(conn: sqlite3.Connection, cfg: Config, inp: PublishInput) -> 
                 (batch_id, run_id, f"pub:{inp.run_key}", req_hash, timeutil.now_iso()),
             )
             seq = 0
+            queue: list[tuple[str | None, int, str, str]] = []
+            published: list[Story] = []
             first_run = _checkpoint(conn) is None
             stories = list(inp.stories)
             if first_run:
@@ -434,11 +473,13 @@ def publish_digest(conn: sqlite3.Connection, cfg: Config, inp: PublishInput) -> 
                     rejected.append({"candidate_id": story.candidate_id,
                                      "reason": f"FIRST_RUN_LIMIT: max {cfg.first_run_max_stories} stories on the first run"})  # fmt: skip
                     continue
-                acc, rej, seq = _store_story(conn, cfg, run, batch_id, story, seq)
+                acc, rej, seq = _store_story(conn, cfg, run, batch_id, story, seq, queue)
                 if acc:
                     accepted.append(acc)
+                    published.append(story)
                 if rej:
                     rejected.append(rej)
+            _enqueue(conn, cfg, inp.run_key, batch_id, published, queue)
             conn.execute(
                 "UPDATE publication_batches SET story_count = ? WHERE id = ?", (len(accepted), batch_id)
             )

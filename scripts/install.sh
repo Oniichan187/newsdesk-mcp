@@ -10,7 +10,7 @@ ETC=/etc/newsrelay
 SECRETS=$ETC/secrets
 STATE=/var/lib/newsrelay
 USER_NAME=newsrelay
-UNITS="newsrelay-api.service newsrelay-worker.service newsrelay-presence.service newsrelay-maintenance.service newsrelay-maintenance.timer newsrelay-healthcheck.service newsrelay-healthcheck.timer"
+UNITS="newsrelay-api.service newsrelay-worker.service newsrelay-presence.service newsrelay-reader.service newsrelay-maintenance.service newsrelay-maintenance.timer newsrelay-healthcheck.service newsrelay-healthcheck.timer"
 SRC=$(cd "$(dirname "$0")/.." && pwd)
 TS=$(date -u +%Y%m%dT%H%M%SZ)
 
@@ -172,13 +172,15 @@ for u in $UNITS; do
 done
 install -m 0755 -o root -g root "$APP/current/src/scripts/newsrelay-wrapper.sh" /usr/local/bin/newsrelay
 systemctl daemon-reload
-systemctl enable --quiet newsrelay-api.service newsrelay-worker.service newsrelay-presence.service     newsrelay-maintenance.timer newsrelay-healthcheck.timer
+systemctl enable --quiet newsrelay-api.service newsrelay-worker.service newsrelay-presence.service newsrelay-reader.service     newsrelay-maintenance.timer newsrelay-healthcheck.timer
 # Clear start-rate limits left by earlier restarts (repeated installs/rollbacks), then start.
 systemctl reset-failed newsrelay-api.service newsrelay-worker.service 2>/dev/null || true
 systemctl restart newsrelay-api.service newsrelay-worker.service || restore_previous "service start failed"
 systemctl start newsrelay-maintenance.timer newsrelay-healthcheck.timer
 systemctl reset-failed newsrelay-presence.service 2>/dev/null || true
 systemctl restart newsrelay-presence.service || say "WARNING: presence service did not start (cosmetic only)"
+systemctl reset-failed newsrelay-reader.service 2>/dev/null || true
+systemctl restart newsrelay-reader.service || say "WARNING: reader service did not start (optional)"
 
 # --- 8. verify (API ready + worker heartbeat), otherwise full rollback ---------------------------
 PORT=$(sed -n 's/^listen_port *= *\([0-9]*\).*/\1/p' "$ETC/config.toml"); PORT=${PORT:-8787}

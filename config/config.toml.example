@@ -32,7 +32,13 @@ discord_daily_keep = 7
 discord_username = "News Update"
 # Country the readers live in ("Impact Austria" line); keep it equal to build_prompt.py --country.
 reader_country = "Austria"
-max_message_chars = 1850
+max_message_chars = 1990   # Discord's hard limit is 2000; longer stories are split without markers
+# Reading-friendly PDF (phone-sized pages, Bionic Reading) posted before each run's stories.
+briefing_pdf = true
+# RSVP speed reader (newsrelay-reader.service, 127.0.0.1:reader_listen_port). Publish it inside the
+# tailnet only: sudo sh scripts/expose-reader.sh. reader_url is linked under the PDF in Discord.
+reader_listen_port = 8788
+reader_url = ""
 suppress_link_embeds = true
 
 # Retention (compact identity data — titles, facts, fingerprints, URLs — is kept forever)

@@ -62,6 +62,8 @@ def cfg(tmp_path: Path) -> Config:
         min_free_disk_mb=1,
         allowed_redirect_prefixes=("https://chatgpt.com/connector_platform_oauth_redirect",),
         sources_file=tmp_path / "sources.toml",
+        briefing_pdf=False,  # enabled explicitly in test_briefing.py
+        briefing_dir=tmp_path / "briefings",
     )
 
 

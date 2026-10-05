@@ -8,9 +8,11 @@ from *ambiguous* ones (request may have reached Discord -> DELIVERY_UNCERTAIN, n
 from __future__ import annotations
 
 import enum
+import json
 import logging
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import urlsplit
 
@@ -93,6 +95,28 @@ _UA = {"User-Agent": "newsrelay (self-hosted, +https://discord.com/developers/do
 _TIMEOUT = httpx.Timeout(connect=10.0, read=20.0, write=10.0, pool=5.0)
 
 
+MAX_FILE_BYTES = 8 * 1024 * 1024  # stays below Discord's smallest upload limit
+
+
+def _with_file(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+    """Request kwargs: JSON, or multipart with the payload's file attached (missing file -> text only)."""
+    spec = payload.get("file")
+    if not isinstance(spec, dict):
+        return {"json": body}
+    try:
+        data = Path(str(spec["path"])).read_bytes()
+    except OSError:
+        return {"json": body}
+    if len(data) > MAX_FILE_BYTES:
+        return {"json": body}
+    name = str(spec.get("name") or "briefing.pdf")
+    body = {**body, "attachments": [{"id": 0, "filename": name}]}
+    return {
+        "data": {"payload_json": json.dumps(body, ensure_ascii=False)},
+        "files": {"files[0]": (name, data, "application/pdf")},
+    }
+
+
 def _post(client: httpx.Client, url: str, **kw: Any) -> SendResult:
     try:
         resp = client.post(url, **kw)
@@ -131,7 +155,8 @@ class WebhookTransport:
         self._client.close()
 
     def send(self, payload: dict[str, Any], key: str | None = None) -> SendResult:
-        return _post(self._client, self._url, params={"wait": "true"}, json=payload)
+        body = {k: v for k, v in payload.items() if k != "file"}
+        return _post(self._client, self._url, params={"wait": "true"}, **_with_file(body, payload))
 
     def delete_message(self, message_id: str) -> int:
         if not message_id.isdigit():
@@ -197,7 +222,7 @@ class BotTransport:
             if not channel_id.isdigit() or not 15 <= len(channel_id) <= 25:
                 raise ValueError("invalid Discord channel id")
             url = f"{API_BASE}/channels/{channel_id}/messages"
-        return _post(self._client, url, json=body, headers=self._auth)
+        return _post(self._client, url, headers=self._auth, **_with_file(body, payload))
 
     def delete_message(self, message_id: str) -> int:
         if not message_id.isdigit():
