@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.8.1 — 2026-10-06
+
+- Briefing PDF: smaller type (body 8.8 pt, headlines 12.5 pt) — more text per phone screen.
+- Speed reader: stories published before 1.8.0 (no stored JSON) are listed and readable again, from
+  headline, body and sources; the day list was empty for them.
+
 ## 1.8.0 — 2026-10-06
 
 - **Briefing PDF** before each run's stories: phone-sized pages (108 x 192 mm), IBM Plex Serif, no
