@@ -30,6 +30,7 @@ No LLM on the Pi, no crawler, no Docker, no cloud database: Python + SQLite + sy
 ```
 ## 🔄 Update: Austrian health insurer confirms data breach
 -# 🛡️ Cybersecurity · 04 Oct 2026
+📍 **Region:** Austria
 
 **Since the last update:** The insurer has now officially confirmed the breach first claimed by a
 hacker group on Thursday.
@@ -40,7 +41,7 @@ hacker group on Thursday.
 
 **Confirmed / unclear:** The breach is confirmed; whether medical records were taken is still open.
 
-🎯 **Impact (Austria):** About 1.2 million insured people should expect phishing mails and calls …
+🎯 **Impact:** About 1.2 million insured people should expect phishing mails and calls …
 
 🔮 **Outlook:**
 - Medical records turn out to be affected → **open (about even)** (insurer's statement)
@@ -158,7 +159,7 @@ these outlets. Edit the file to use your own.
 **Prompt** — language, region, topics and time in one command:
 
 ```sh
-python3 scripts/build_prompt.py --language German --region "Germany and the EU" --time 07:00 > my-task-prompt.md
+python3 scripts/build_prompt.py --language German --region Germany --time 07:00 > my-task-prompt.md
 ```
 
 Everything else (channel, layout, memory, retention): [CUSTOMIZING.md](docs/CUSTOMIZING.md).

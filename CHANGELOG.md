@@ -3,10 +3,15 @@
 ## 1.6.0 — 2026-10-05
 
 - **Daily channels** (bot mode, `discord_daily_channels = true`): every day's briefing gets its own
-  text channel `📅-mo-05-10` in the category `📰 Tagesbriefing`, newest on top. Days older than
+  text channel `📅-mo-05-10` in a category the server owner creates (`discord_daily_category_id`;
+  the bot never creates or moves categories), newest on top. Days older than
   `discord_daily_keep` (7) are copied chronologically into `🗄-archiv` (day header + the exact posted
   messages from the outbox), and only then is their channel deleted; the copy is resumable.
-  Without the "Manage Channels" permission posts fall back to `discord_channel_id`.
+  Without the "Manage Channels" permission or a valid category id posts fall back to
+  `discord_channel_id`.
+- **Region filter:** `--region` (default `Austria`) now means "where the readers live": only global
+  news, events abroad with real consequences there, and its own consequential decisions qualify.
+- `impact_region` is required and shown as its own line, `🌍 Region: Global` / `📍 Region: USA`.
 - Schema 2: table `discord_day_channels`, column `outbox.channel_id`.
 
 ## 1.5.0 — 2026-10-04

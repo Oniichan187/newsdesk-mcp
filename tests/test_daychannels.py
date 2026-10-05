@@ -6,6 +6,8 @@ import dataclasses
 from datetime import date
 from typing import Any
 
+import pytest
+
 from conftest import publish_input, story
 from newsrelay import service
 from newsrelay.publishing.daychannels import DayChannels, DiscordAPIError, channel_name, day_title
@@ -13,6 +15,7 @@ from newsrelay.publishing.discord import BotTransport, Outcome, SendResult
 from newsrelay.publishing.worker import Worker
 
 FIXED = "100000000000000001"
+CATEGORY = "100000000000000002"
 GUILD = "900000000000000009"
 
 
@@ -20,13 +23,18 @@ class FakeGuild:
     """In-memory stand-in for the guild/channel REST endpoints."""
 
     def __init__(self, fail_create: bool = False) -> None:
-        self.channels: dict[str, dict[str, Any]] = {FIXED: {"id": FIXED, "type": 0, "name": "news"}}
+        self.channels: dict[str, dict[str, Any]] = {
+            FIXED: {"id": FIXED, "type": 0, "name": "news"},
+            CATEGORY: {"id": CATEGORY, "type": 4, "name": "📰 Tagesbriefing"},
+        }
         self.deleted: list[str] = []
         self.positions: list[list[dict[str, Any]]] = []
         self.fail_create = fail_create
         self._next = 200000000000000000
 
     def get_channel(self, cid: str) -> dict[str, Any]:
+        if cid not in self.channels:
+            raise DiscordAPIError(404, "Unknown Channel")
         return {**self.channels[cid], "guild_id": GUILD}
 
     def list_channels(self, guild_id: str) -> list[dict[str, Any]]:
@@ -70,9 +78,13 @@ class FakeBot(BotTransport):
         pass
 
 
-def _cfg(cfg):
+def _cfg(cfg, category: str = CATEGORY):
     return dataclasses.replace(
-        cfg, discord_daily_channels=True, discord_channel_id=FIXED, discord_daily_keep=2
+        cfg,
+        discord_daily_channels=True,
+        discord_channel_id=FIXED,
+        discord_daily_category_id=category,
+        discord_daily_keep=2,
     )
 
 
@@ -108,7 +120,9 @@ def test_messages_go_to_a_channel_per_day(cfg, conn, clock):
     _drain(w)
     sat = guild.by_name("📅-sa-03-10")
     assert [c for c, _ in bot.sent] == [sat, sat]
-    assert guild.channels[sat]["parent_id"] == guild.by_name("📰 Tagesbriefing")
+    assert guild.channels[sat]["parent_id"] == CATEGORY
+    assert sum(c["type"] == 4 for c in guild.channels.values()) == 1  # the bot never creates a category
+    assert guild.channels[guild.by_name("🗄-archiv")]["parent_id"] == CATEGORY
     assert guild.channels[sat]["topic"] == "News-Briefing vom Samstag, 03.10.2026"
     archive = guild.by_name("🗄-archiv")
     assert guild.positions[-1] == [{"id": sat, "position": 0}, {"id": archive, "position": 1}]
@@ -180,5 +194,17 @@ def test_missing_permission_falls_back_to_fixed_channel(cfg, conn, clock):
     assert conn.execute("SELECT state FROM outbox").fetchone()[0] == "delivered"
 
 
+@pytest.mark.parametrize("category", ["", "100000000000000077", FIXED])  # unset, unknown, not a category
+def test_without_valid_category_posts_go_to_fixed_channel(cfg, conn, clock, category):
+    cfg = _cfg(cfg, category)
+    guild, bot = FakeGuild(), FakeBot()
+    w = Worker(cfg, conn, bot, days=DayChannels(cfg, conn, guild))
+    _publish(conn, cfg, 3)
+    _drain(w)
+    assert bot.sent[0][0] is None
+    assert len(guild.channels) == 2  # nothing was created
+
+
 def test_feature_off_by_default(cfg):
     assert cfg.discord_daily_channels is False
+    assert cfg.discord_daily_category_id == ""

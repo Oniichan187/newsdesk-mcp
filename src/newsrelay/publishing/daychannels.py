@@ -1,14 +1,15 @@
 """Daily briefing channels (bot mode, optional).
 
-Layout in the guild of `discord_channel_id`:
+Layout inside the category `discord_daily_category_id` (created by the server owner; the bot never
+creates or moves the category itself):
 
-    📰 Tagesbriefing        category (discord_daily_category)
+    📰 Tagesbriefing        category
       📅-mo-05-10           one text channel per local day, newest on top
       📅-so-04-10           ... the last `discord_daily_keep` days
       🗄-archiv             older days, copied here chronologically before their channel is deleted
 
-Delivery never depends on this: when a channel cannot be resolved (missing "Manage Channels"
-permission, API error), `channel_for` returns None and the message goes to the fixed
+Delivery never depends on this: when a channel cannot be resolved (no category id configured,
+category deleted, missing "Manage Channels" permission, API error), `channel_for` returns None and the message goes to the fixed
 `discord_channel_id` as before. The archive copy comes from the outbox payloads (the exact text that
 was posted), not from reading Discord, and is resumable: `header_sent` / `archived_upto` record
 progress, and a channel is deleted only after everything was copied.
@@ -138,45 +139,48 @@ class DayChannels:
         self._channels = {str(c["id"]): c for c in self.api.list_channels(guild_id)}
         self._layout_at = time.monotonic()
 
-    def _find_or_create(self, guild_id: str, meta_key: str, name: str, ctype: int, parent: str | None) -> str:
-        known = self._meta(meta_key)
+    def _archive_channel(self, guild_id: str, category: str) -> str:
+        """The archive text channel in the category: remembered id, else by name, else created."""
+        known = self._meta("daily_archive_id")
         if known and known in self._channels:
             return known
+        name = self.cfg.discord_daily_archive
         for c in self._channels.values():
             if (
-                c.get("type") == ctype
+                c.get("type") == GUILD_TEXT
+                and str(c.get("parent_id")) == category
                 and str(c.get("name", "")).lower() == name.lower()
-                and (parent is None or str(c.get("parent_id")) == parent)
             ):
                 cid = str(c["id"])
                 break
         else:
-            body: dict[str, Any] = {"name": name, "type": ctype}
-            if parent:
-                body["parent_id"] = parent
-            if ctype == GUILD_TEXT:
-                body["topic"] = "Archiv der Tagesbriefings, chronologisch."
+            body = {
+                "name": name,
+                "type": GUILD_TEXT,
+                "parent_id": category,
+                "topic": "Archiv der Tagesbriefings, chronologisch.",
+            }
             created = self.api.create_channel(guild_id, body)
             cid = str(created["id"])
             self._channels[cid] = created
-            log(logger, logging.INFO, "discord channel created", name=name, channel_id=cid)
-        self._set_meta(meta_key, cid)
+            log(logger, logging.INFO, "archive channel created", channel_id=cid)
+        self._set_meta("daily_archive_id", cid)
         return cid
 
     def _layout(self) -> tuple[str, str, str]:
+        category = self.cfg.discord_daily_category_id.strip()
+        if not category.isdigit():
+            raise ValueError("discord_daily_category_id is not set")
         guild_id = self._meta("daily_guild_id")
-        if not guild_id:
-            guild_id = str(self.api.get_channel(self.cfg.discord_channel_id)["guild_id"])
+        if not guild_id or self._meta("daily_guild_category") != category:
+            guild_id = str(self.api.get_channel(category)["guild_id"])
             self._set_meta("daily_guild_id", guild_id)
-        if time.monotonic() - self._layout_at > LAYOUT_TTL_S or not self._channels:
+            self._set_meta("daily_guild_category", category)
+        if time.monotonic() - self._layout_at > LAYOUT_TTL_S or category not in self._channels:
             self._refresh(guild_id)
-        category = self._find_or_create(
-            guild_id, "daily_category_id", self.cfg.discord_daily_category, GUILD_CATEGORY, None
-        )
-        archive = self._find_or_create(
-            guild_id, "daily_archive_id", self.cfg.discord_daily_archive, GUILD_TEXT, category
-        )
-        return guild_id, category, archive
+        if self._channels.get(category, {}).get("type") != GUILD_CATEGORY:
+            raise ValueError("discord_daily_category_id is not a category of this server")
+        return guild_id, category, self._archive_channel(guild_id, category)
 
     def _order(self, guild_id: str, archive: str) -> None:
         """Newest day on top, archive at the bottom."""

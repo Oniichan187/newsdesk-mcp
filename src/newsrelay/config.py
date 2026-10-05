@@ -55,10 +55,11 @@ class Config:
     discord_presence_status: str = "online"  # online | idle | dnd
     discord_presence_activity_type: str = "watching"  # playing | listening | watching | competing
     discord_presence_text: str = "the news"
-    # Bot mode only: one text channel per day in a category; days older than `discord_daily_keep`
-    # are copied to the archive channel and their channel is deleted. Needs "Manage Channels".
+    # Bot mode only: one text channel per day inside an existing category (created by the server
+    # owner, so it stays where they put it); days older than `discord_daily_keep` are copied to the
+    # archive channel and their channel is deleted. Needs "Manage Channels".
     discord_daily_channels: bool = False
-    discord_daily_category: str = "📰 Tagesbriefing"
+    discord_daily_category_id: str = ""
     discord_daily_archive: str = "🗄-archiv"
     discord_daily_keep: int = 7
     max_message_chars: int = 1850
@@ -93,7 +94,7 @@ class Config:
 
 
 # Keys accepted (and ignored) for compatibility with configs written by older versions.
-DEPRECATED_KEYS = {"max_lookback_days", "stale_run_hours", "max_pending_age_hours"}
+DEPRECATED_KEYS = {"max_lookback_days", "stale_run_hours", "max_pending_age_hours", "discord_daily_category"}
 _PATH_FIELDS = {"db_path", "backup_dir", "runtime_dir", "secret_dir_override", "sources_file"}
 _TUPLE_FIELDS = {"extra_allowed_hosts", "allowed_redirect_prefixes"}
 
