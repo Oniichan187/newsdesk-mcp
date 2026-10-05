@@ -70,9 +70,16 @@ def _source_line(story: Story) -> str:
     return "📰 **Sources:** " + " · ".join(links)
 
 
+_GLOBAL = {"global", "worldwide", "world", "weltweit"}
+
+
+def _region_line(story: Story) -> str:
+    emoji = "🌍" if story.impact_region.lower() in _GLOBAL else "📍"
+    return f"{emoji} **Region:** {story.impact_region}"
+
+
 def _impact_lines(story: Story) -> list[str]:
-    where = f" ({story.impact_region})" if story.impact_region else ""
-    lines = [f"🎯 **Impact{where}:** {story.impact}"]
+    lines = [f"🎯 **Impact:** {story.impact}"]
     if story.outlook:
         lines += ["", "🔮 **Outlook:**"]
         for o in story.outlook:
@@ -109,7 +116,7 @@ _CATEGORY_EMOJI = {
 
 
 def render_text(story: Story, display_tz: str) -> str:
-    """Discord markdown: heading, small meta line, the body as written, linked sources."""
+    """Discord markdown: heading, meta line, region, the body as written, impact/outlook, sources."""
     headline = story.headline
     prefix = _KIND_PREFIX[story.kind]
     if prefix and headline.lower().startswith(prefix.split(" ", 1)[1].lower()):
@@ -124,6 +131,7 @@ def render_text(story: Story, display_tz: str) -> str:
     parts = [
         f"## {prefix}{headline}",
         "-# " + " · ".join(meta),
+        _region_line(story),
         "",
         story.body.strip(),
         "",

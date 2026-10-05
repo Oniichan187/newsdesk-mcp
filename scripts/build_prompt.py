@@ -49,7 +49,7 @@ def build(
     sources: list[str],
     *,
     language: str = "English",
-    region: str = "Austria/Europe",
+    region: str = "Austria",
     topics: str = DEFAULT_TOPICS,
     timezone: str = "Europe/Vienna",
 ) -> str:
@@ -73,7 +73,9 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--sources", type=Path, default=DEFAULT_SOURCES, help="sources.toml allowlist")
     p.add_argument("--language", default="English", help="language of the Discord posts")
-    p.add_argument("--region", default="Austria/Europe", help="whose perspective decides importance")
+    p.add_argument(
+        "--region", default="Austria", help="where the readers live; only news affecting it is posted"
+    )
     p.add_argument("--topics", default=DEFAULT_TOPICS, help="comma-separated topic scope")
     p.add_argument("--timezone", default="Europe/Vienna", help="IANA timezone used for the daily run key")
     p.add_argument("--time", default="18:00", help="time of day the task runs (shown in the header only)")

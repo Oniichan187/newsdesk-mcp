@@ -208,10 +208,14 @@ class Story(Strict):
         StringConstraints(strip_whitespace=True, min_length=10, max_length=600),
         AfterValidator(_no_control),
     ] = Field(description="What concretely changes or could change for the reader: who, how, from when.")
-    impact_region: (
-        Annotated[str, StringConstraints(strip_whitespace=True, max_length=60), AfterValidator(_no_control)]
-        | None
-    ) = Field(default=None, description="Where the impact mainly lands, e.g. 'Europe', 'USA', 'worldwide'.")
+    impact_region: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=2, max_length=60),
+        AfterValidator(_no_control),
+    ] = Field(
+        description="Region of the world the story concerns: 'Global', a continent ('Europe'), a bloc "
+        "('EU') or a country ('USA', 'Austria')."
+    )
     outlook: list[Outlook] = Field(
         default_factory=list,
         max_length=MAX_OUTLOOKS,

@@ -37,7 +37,7 @@ and replace it in your ChatGPT task. 15-30 outlets is a good range; long lists m
 ```sh
 python3 scripts/build_prompt.py \
   --language German \
-  --region "Germany and the EU" \
+  --region Germany \
   --topics "AI, science, climate, energy" \
   --timezone Europe/Berlin --time 07:00
 ```
@@ -46,7 +46,7 @@ python3 scripts/build_prompt.py \
 |---|---|---|
 | `--sources` | `src/newsrelay/sources.toml` | allowlist file the outlets are read from |
 | `--language` | English | language of headlines and post bodies |
-| `--region` | Austria/Europe | whose perspective decides what is important |
+| `--region` | Austria | where the readers live: only stories that affect it are posted (global news, events abroad with consequences there, its own decisions) |
 | `--topics` | broad list | narrow or widen the scope |
 | `--timezone` / `--time` | Europe/Vienna / 18:00 | date of the daily run key; reminder in the header |
 
@@ -63,7 +63,7 @@ runs per day, change the run key in the prompt to `news/YYYY-MM-DDTHH` — no ba
 | Message length | `max_message_chars` (default 1850; Discord's hard limit is 2000) |
 | Link previews | `suppress_link_embeds = false` to show previews |
 | Online status | `discord_presence = true/false`, `discord_presence_status` (online/idle/dnd), `discord_presence_activity_type` (watching/playing/listening/competing), `discord_presence_text`; then `sudo systemctl restart newsrelay-presence` |
-| One channel per day + archive | `discord_daily_channels = true` (bot needs **Manage Channels**); `discord_daily_keep`, `discord_daily_category`, `discord_daily_archive`; restart `newsrelay-worker` |
+| One channel per day + archive | Create a category yourself (e.g. `📰 Tagesbriefing`; the bot never creates or moves it), copy its ID (Developer Mode → right-click → Copy ID), then `discord_daily_channels = true`, `discord_daily_category_id = "…"`; optional `discord_daily_keep` (7), `discord_daily_archive` (`🗄-archiv`); bot needs **Manage Channels**; restart `newsrelay-worker` |
 | Webhook instead of bot | `sudo newsrelay set-webhook`, leave `discord_channel_id` empty; `discord_username` sets the name |
 
 Post layout (heading, category emoji, source line) is in

@@ -106,7 +106,7 @@ def test_limit_too_small(limit):
 def test_impact_and_outlook_rendered_before_sources():
     d = story(
         impact="EU users may see Marketplace split from Facebook.",
-        impact_region="Europe",
+        impact_region="Global",
         outlook=[
             {
                 "event": "Court overturns the fine",
@@ -118,7 +118,9 @@ def test_impact_and_outlook_rendered_before_sources():
         ],
     )
     text = render_text(as_story(d), "Europe/Vienna")
-    assert "🎯 **Impact (Europe):** EU users may see Marketplace split from Facebook." in text
+    assert "🌍 **Region:** Global" in text
+    assert "🎯 **Impact:** EU users may see Marketplace split from Facebook." in text
+    assert text.index("Region:") < text.index("🎯")
     assert "- Court overturns the fine → **unlikely, ~25 %** (antitrust lawyers quoted by Tagesschau)" in text
     assert "- Meta appeals → **very likely** (Meta announced it)" in text
     assert text.index("🎯") < text.index("🔮") < text.index("📰 **Sources:**")
@@ -126,12 +128,13 @@ def test_impact_and_outlook_rendered_before_sources():
 
 def test_no_outlook_section_without_outlook():
     text = render_text(as_story(story()), "Europe/Vienna")
-    assert "🎯 **Impact:**" in text and "🔮" not in text
+    assert "📍 **Region:** EU" in text and "🎯 **Impact:**" in text and "🔮" not in text
 
 
-def test_impact_is_required():
+@pytest.mark.parametrize("field", ["impact", "impact_region"])
+def test_impact_and_region_are_required(field):
     d = story()
-    del d["impact"]
+    del d[field]
     with pytest.raises(ValueError):
         as_story(d)
 
