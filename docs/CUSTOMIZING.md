@@ -32,12 +32,12 @@ To change it:
 Afterwards regenerate the prompt (`python3 scripts/build_prompt.py --sources <file> > my-task-prompt.md`)
 and replace it in your ChatGPT task. 15-30 outlets is a good range; long lists make runs slower.
 
-## 2. Language, region, topics, time
+## 2. Language, country, topics, time
 
 ```sh
 python3 scripts/build_prompt.py \
   --language German \
-  --region Germany \
+  --country Germany \
   --topics "AI, science, climate, energy" \
   --timezone Europe/Berlin --time 07:00
 ```
@@ -46,7 +46,7 @@ python3 scripts/build_prompt.py \
 |---|---|---|
 | `--sources` | `src/newsrelay/sources.toml` | allowlist file the outlets are read from |
 | `--language` | English | language of headlines and post bodies |
-| `--region` | Austria | where the readers live: only stories that affect it are posted (global news, events abroad with consequences there, its own decisions) |
+| `--country` (alias `--region`) | Austria | the country you live in: only stories that affect it are posted — global developments, events abroad with real consequences there, and its own consequential decisions |
 | `--topics` | broad list | narrow or widen the scope |
 | `--timezone` / `--time` | Europe/Vienna / 18:00 | date of the daily run key; reminder in the header |
 

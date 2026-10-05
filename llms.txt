@@ -17,7 +17,7 @@ for material developments; only trusted sources; unattended operation on a Raspb
 - [Architecture](https://github.com/Oniichan187/newsdesk-mcp/blob/main/docs/ARCHITECTURE.md): run lifecycle, dedup memory, outbox state machine
 - [ChatGPT setup](https://github.com/Oniichan187/newsdesk-mcp/blob/main/docs/CHATGPT_SETUP.md): connecting the MCP server as a ChatGPT app, OAuth, limitations
 - [Scheduled Task prompt](https://github.com/Oniichan187/newsdesk-mcp/blob/main/docs/SCHEDULED_TASK_PROMPT.md): ready-to-paste prompt
-- [Customizing](https://github.com/Oniichan187/newsdesk-mcp/blob/main/docs/CUSTOMIZING.md): sources allowlist, language, region, Discord settings
+- [Customizing](https://github.com/Oniichan187/newsdesk-mcp/blob/main/docs/CUSTOMIZING.md): sources allowlist, language, country, Discord settings
 - [Security](https://github.com/Oniichan187/newsdesk-mcp/blob/main/docs/SECURITY.md): exposure, secrets, threat model
 
 ## MCP tools

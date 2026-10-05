@@ -9,8 +9,9 @@
   messages from the outbox), and only then is their channel deleted; the copy is resumable.
   Without the "Manage Channels" permission or a valid category id posts fall back to
   `discord_channel_id`.
-- **Region filter:** `--region` (default `Austria`) now means "where the readers live": only global
-  news, events abroad with real consequences there, and its own consequential decisions qualify.
+- **Country filter:** `build_prompt.py --country` (default `Austria`; `--region` still works) is the
+  country the readers live in: only global developments, events abroad with real consequences there,
+  and its own consequential decisions qualify.
 - `impact_region` is required and shown as its own line, `🌍 Region: Global` / `📍 Region: USA`.
 - Schema 2: table `discord_day_channels`, column `outbox.channel_id`.
 
