@@ -85,7 +85,8 @@ class Worker:
         self.notify = notify
         self.days = days
         self._warned_no_webhook = False
-        self._archive_checked = 0.0
+        # monotonic() counts from boot, so 0.0 would look "recent" on a freshly started host
+        self._archive_checked: float | None = None
 
     def _alive(self) -> None:
         heartbeat(self.cfg.runtime_dir)
@@ -153,7 +154,9 @@ class Worker:
 
     def maintain_days(self) -> int:
         """Archive old day channels when the queue is idle (at most every ARCHIVE_CHECK_S)."""
-        if self.days is None or time.monotonic() - self._archive_checked < ARCHIVE_CHECK_S:
+        if self.days is None or (
+            self._archive_checked is not None and time.monotonic() - self._archive_checked < ARCHIVE_CHECK_S
+        ):
             return 0
         self._archive_checked = time.monotonic()
         try:
