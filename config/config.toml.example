@@ -20,6 +20,13 @@ discord_presence = true
 discord_presence_status = "online"            # online | idle | dnd
 discord_presence_activity_type = "watching"   # playing | listening | watching | competing
 discord_presence_text = "the news"
+# One text channel per day ("📅-mo-05-10") in a category, newest on top. Days older than
+# discord_daily_keep are copied (in order) to the archive channel, then their channel is deleted.
+# Needs the bot permission "Manage Channels"; without it posts go to discord_channel_id as before.
+discord_daily_channels = false
+discord_daily_category = "📰 Tagesbriefing"
+discord_daily_archive = "🗄-archiv"
+discord_daily_keep = 7
 # webhook mode only (fallback when no bot is configured)
 discord_username = "News Update"
 max_message_chars = 1850

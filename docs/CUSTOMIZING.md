@@ -63,6 +63,7 @@ runs per day, change the run key in the prompt to `news/YYYY-MM-DDTHH` — no ba
 | Message length | `max_message_chars` (default 1850; Discord's hard limit is 2000) |
 | Link previews | `suppress_link_embeds = false` to show previews |
 | Online status | `discord_presence = true/false`, `discord_presence_status` (online/idle/dnd), `discord_presence_activity_type` (watching/playing/listening/competing), `discord_presence_text`; then `sudo systemctl restart newsrelay-presence` |
+| One channel per day + archive | `discord_daily_channels = true` (bot needs **Manage Channels**); `discord_daily_keep`, `discord_daily_category`, `discord_daily_archive`; restart `newsrelay-worker` |
 | Webhook instead of bot | `sudo newsrelay set-webhook`, leave `discord_channel_id` empty; `discord_username` sets the name |
 
 Post layout (heading, category emoji, source line) is in

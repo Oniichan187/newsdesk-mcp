@@ -55,6 +55,12 @@ class Config:
     discord_presence_status: str = "online"  # online | idle | dnd
     discord_presence_activity_type: str = "watching"  # playing | listening | watching | competing
     discord_presence_text: str = "the news"
+    # Bot mode only: one text channel per day in a category; days older than `discord_daily_keep`
+    # are copied to the archive channel and their channel is deleted. Needs "Manage Channels".
+    discord_daily_channels: bool = False
+    discord_daily_category: str = "📰 Tagesbriefing"
+    discord_daily_archive: str = "🗄-archiv"
+    discord_daily_keep: int = 7
     max_message_chars: int = 1850
     suppress_link_embeds: bool = True
     min_send_interval_s: float = 2.5

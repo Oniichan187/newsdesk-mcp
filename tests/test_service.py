@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from conftest import candidate, publish_input, story
 from newsrelay import service, timeutil
-from newsrelay.database import connect, current_version, migrate, open_db
+from newsrelay.database import SCHEMA_VERSION, connect, current_version, migrate, open_db
 from newsrelay.dedup.matcher import EXACT_DUPLICATE, LIKELY_DUPLICATE, NO_MATCH, POSSIBLE_EXISTING_TOPIC
 from newsrelay.schemas import BeginRunInput, Candidate, MatchInput, NoopInput, PublishInput, StatusInput
 
@@ -34,10 +34,10 @@ def outbox_count(conn):
 
 
 def test_migrations_idempotent(cfg, conn):
-    assert current_version(conn) == 1
-    assert migrate(conn) == 1  # second run is a no-op
+    assert current_version(conn) == SCHEMA_VERSION
+    assert migrate(conn) == SCHEMA_VERSION  # second run is a no-op
     c2 = connect(cfg.db_path)
-    assert migrate(c2) == 1
+    assert migrate(c2) == SCHEMA_VERSION
     assert c2.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
     assert c2.execute("PRAGMA foreign_keys").fetchone()[0] == 1
     assert conn.execute("PRAGMA auto_vacuum").fetchone()[0] == 2  # incremental
@@ -393,4 +393,4 @@ def test_bad_run_keys(key):
 
 def test_open_db_twice_safe(cfg, conn):
     c = open_db(cfg.db_path)
-    assert current_version(c) == 1
+    assert current_version(c) == SCHEMA_VERSION
