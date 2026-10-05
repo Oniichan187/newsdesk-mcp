@@ -10,6 +10,9 @@
 - Optional `outlook` (1–3 items) for forecasts/estimates: event, likelihood
   (very_likely … very_unlikely), optional percentage (must fit the level) and basis; rendered as
   "🔮 Outlook".
+- **Several sources:** when several allowed outlets cover an event, the story cites each of them
+  (one real article per outlet, up to 6) — never an outlet that was not read. The relay rejects
+  duplicate source URLs and homepage links.
 - Prompt rule 9: the task must never pause or edit itself after relay errors (it used to pause
   itself when the relay was unreachable); it reports `relay error: …` and the next run catches up.
   Re-paste the regenerated prompt into the Scheduled Task.

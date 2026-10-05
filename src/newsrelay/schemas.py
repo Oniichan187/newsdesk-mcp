@@ -44,6 +44,19 @@ def _https_url(value: str) -> str:
     return value
 
 
+def _article_url(value: str) -> str:
+    """A source must point at an article, not at an outlet's front page."""
+    parts = urlsplit(value)
+    if parts.path.strip("/") == "" and not parts.query:
+        raise ValueError("source URL must link to the article itself, not to the homepage")
+    return value
+
+
+def _distinct_urls(values: list[str]) -> None:
+    if len(set(values)) != len(values):
+        raise ValueError("each source URL may be listed only once")
+
+
 def _aware(value: datetime) -> datetime:
     if value.tzinfo is None:
         raise ValueError("timestamp must include a timezone offset (use Z for UTC)")
@@ -62,6 +75,7 @@ Entity = Annotated[
 CandidateId = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_.-]{1,40}$")]
 TopicKey = Annotated[str, StringConstraints(pattern=r"^[a-z0-9][a-z0-9-]{1,79}$")]
 HttpsUrl = Annotated[str, StringConstraints(strip_whitespace=True, min_length=12), AfterValidator(_https_url)]
+ArticleUrl = Annotated[HttpsUrl, AfterValidator(_article_url)]
 AwareDatetime = Annotated[datetime, AfterValidator(_aware)]
 Category = Literal[
     "ai",
@@ -114,7 +128,7 @@ class Strict(BaseModel):
 
 
 class Source(Strict):
-    url: HttpsUrl
+    url: ArticleUrl
     name: (
         Annotated[str, StringConstraints(strip_whitespace=True, max_length=80), AfterValidator(_no_control)]
         | None
@@ -161,8 +175,13 @@ class Candidate(Strict):
     event_time: AwareDatetime | None = None
     entities: list[Entity] = Field(default_factory=list, max_length=MAX_ENTITIES)
     key_facts: list[Fact] = Field(min_length=1, max_length=MAX_FACTS)
-    source_urls: list[HttpsUrl] = Field(min_length=1, max_length=MAX_SOURCES)
+    source_urls: list[ArticleUrl] = Field(min_length=1, max_length=MAX_SOURCES)
     topic_key: TopicKey | None = None
+
+    @model_validator(mode="after")
+    def _unique_sources(self) -> Candidate:
+        _distinct_urls(list(self.source_urls))
+        return self
 
 
 class MatchInput(Strict):
@@ -211,6 +230,11 @@ class Story(Strict):
     importance: int = Field(default=2, ge=1, le=3)
     event_time: AwareDatetime | None = None
     sources: list[Source] = Field(min_length=1, max_length=MAX_SOURCES)
+
+    @model_validator(mode="after")
+    def _unique_sources(self) -> Story:
+        _distinct_urls([s.url for s in self.sources])
+        return self
 
 
 class PublishInput(Strict):
