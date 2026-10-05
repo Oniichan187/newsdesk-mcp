@@ -9,7 +9,10 @@
   "Why it matters" in the body.
 - Optional `outlook` (1–3 items) for forecasts/estimates: event, likelihood
   (very_likely … very_unlikely), optional percentage (must fit the level) and basis; rendered as
-  "🔮 Outlook". Re-paste the regenerated prompt into the Scheduled Task.
+  "🔮 Outlook".
+- Prompt rule 9: the task must never pause or edit itself after relay errors (it used to pause
+  itself when the relay was unreachable); it reports `relay error: …` and the next run catches up.
+  Re-paste the regenerated prompt into the Scheduled Task.
 
 ## 1.4.1 — 2026-10-04
 
