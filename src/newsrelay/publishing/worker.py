@@ -29,12 +29,15 @@ from ..database import DiskFullError, check_disk, open_db
 from ..logutil import log
 from ..sdnotify import notify as sd_notify
 from . import outbox
-from .discord import BotTransport, Transport, WebhookTransport
+from .daychannels import DayChannels, DiscordREST
+from .discord import BotTransport, SendResult, Transport, WebhookTransport
 
 logger = logging.getLogger("newsrelay.worker")
 
 # Longest uninterrupted wait inside the loop; must stay well below WatchdogSec (180 s).
 MAX_SLEEP_SLICE_S = 20.0
+# How often an idle worker checks whether old day channels must be archived.
+ARCHIVE_CHECK_S = 300.0
 
 
 class SingleInstanceError(RuntimeError):
@@ -73,13 +76,16 @@ class Worker:
         transport: Transport | None,
         stop: threading.Event | None = None,
         notify: Callable[[str], object] = sd_notify,
+        days: DayChannels | None = None,
     ) -> None:
         self.cfg = cfg
         self.conn = conn
         self.transport = transport
         self.stop = stop or threading.Event()
         self.notify = notify
+        self.days = days
         self._warned_no_webhook = False
+        self._archive_checked = 0.0
 
     def _alive(self) -> None:
         heartbeat(self.cfg.runtime_dir)
@@ -115,13 +121,46 @@ class Worker:
         if item is None:
             return "idle"
         assert item.payload is not None
+        channel = self._route(item.id)
         # no DB transaction is open during the network call
-        result = self.transport.send(_load(item.payload), key=item.idempotency_key)
+        if channel:
+            result = self._send_to(_load(item.payload), item.idempotency_key, channel)
+        else:
+            result = self.transport.send(_load(item.payload), key=item.idempotency_key)
         state = outbox.finish(
             self.conn, item, result, self.cfg, getattr(self.transport, "dedup_window_s", 0.0)
         )
         self.sleep(max(self.cfg.min_send_interval_s, result.bucket_wait or 0.0))
         return f"sent:{state}"
+
+    def _route(self, outbox_id: int) -> str | None:
+        """Day channel for an item (sticky across retries so the nonce stays in one channel)."""
+        if self.days is None:
+            return None
+        row = self.conn.execute(
+            "SELECT created_at, channel_id FROM outbox WHERE id = ?", (outbox_id,)
+        ).fetchone()
+        if row["channel_id"]:
+            return str(row["channel_id"])
+        channel = self.days.channel_for(row["created_at"])
+        if channel:
+            self.conn.execute("UPDATE outbox SET channel_id = ? WHERE id = ?", (channel, outbox_id))
+        return channel
+
+    def _send_to(self, payload: dict[str, object], key: str, channel: str) -> SendResult:
+        assert isinstance(self.transport, BotTransport)
+        return self.transport.send(payload, key=key, channel_id=channel)
+
+    def maintain_days(self) -> int:
+        """Archive old day channels when the queue is idle (at most every ARCHIVE_CHECK_S)."""
+        if self.days is None or time.monotonic() - self._archive_checked < ARCHIVE_CHECK_S:
+            return 0
+        self._archive_checked = time.monotonic()
+        try:
+            return self.days.archive_old(lambda p, k, c: self._send_to(p, k, c), self.sleep)
+        except Exception as exc:  # never let archiving take down delivery
+            log(logger, logging.WARNING, "day channel archiving failed", error=str(exc)[:200])
+            return 0
 
     def wait_time(self) -> float:
         _, wake_at = outbox.next_due(self.conn)
@@ -148,6 +187,8 @@ class Worker:
                 log(logger, logging.ERROR, "database error in worker loop", error=str(exc))
                 self.sleep(min(120.0, 5.0 * 2 ** min(consecutive_errors, 5)))
                 continue
+            if res == "idle":
+                self.maintain_days()
             if not res.startswith("sent"):
                 self.sleep(self.wait_time())
         log(logger, logging.INFO, "worker stopping")
@@ -212,7 +253,10 @@ def main(cfg: Config, notify: Callable[[str], object] = sd_notify) -> int:
         conn.execute(
             "INSERT OR REPLACE INTO meta(key, value) VALUES ('discord_mode', ?)", (transport_mode(transport),)
         )
-        Worker(cfg, conn, transport, stop, notify).run_forever()
+        days = None
+        if cfg.discord_daily_channels and isinstance(transport, BotTransport):
+            days = DayChannels(cfg, conn, DiscordREST(transport.token))
+        Worker(cfg, conn, transport, stop, notify, days).run_forever()
     except SingleInstanceError as exc:
         log(logger, logging.ERROR, "worker not started", error=str(exc))
         return 1

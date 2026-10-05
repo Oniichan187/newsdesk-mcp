@@ -316,16 +316,17 @@ def test_failing_migration_leaves_db_untouched(cfg, conn, monkeypatch):
     from newsrelay import database
 
     real = database._migration_scripts
-    monkeypatch.setattr(database, "SCHEMA_VERSION", 2)
+    nxt = database.SCHEMA_VERSION + 1
+    monkeypatch.setattr(database, "SCHEMA_VERSION", nxt)
     monkeypatch.setattr(
         database,
         "_migration_scripts",
-        lambda: [*real(), (2, "CREATE TABLE new_thing (x INTEGER);\nTHIS IS NOT SQL;\n")],
+        lambda: [*real(), (nxt, "CREATE TABLE new_thing (x INTEGER);\nTHIS IS NOT SQL;\n")],
     )
     c = connect(cfg.db_path)
     with pytest.raises(Exception):
         migrate(c)
-    assert current_version(c) == 1
+    assert current_version(c) == nxt - 1
     assert c.execute("SELECT count(*) FROM sqlite_master WHERE name='new_thing'").fetchone()[0] == 0
 
 

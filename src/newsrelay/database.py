@@ -14,7 +14,7 @@ from . import timeutil
 
 log = logging.getLogger("newsrelay.db")
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class DiskFullError(RuntimeError):

@@ -171,24 +171,33 @@ class BotTransport:
         if not channel_id.isdigit() or not 15 <= len(channel_id) <= 25:
             raise ValueError("invalid Discord channel id")
         self._url = f"{API_BASE}/channels/{channel_id}/messages"
+        self.token = token.strip()
         self._auth = {"Authorization": f"Bot {token.strip()}"}
         self._client = client or httpx.Client(
             timeout=timeout or _TIMEOUT, follow_redirects=False, headers=_UA
         )
 
-    def __repr__(self) -> str:
+    def __repr__(self) -> str:  # never expose the token
         return "BotTransport(<redacted>)"
 
     def close(self) -> None:
         self._client.close()
 
-    def send(self, payload: dict[str, Any], key: str | None = None) -> SendResult:
+    def send(
+        self, payload: dict[str, Any], key: str | None = None, channel_id: str | None = None
+    ) -> SendResult:
+        """Post to the fixed channel, or to `channel_id` (a day/archive channel of the same bot)."""
         body = {k: v for k, v in payload.items() if k in ("content", "allowed_mentions", "flags")}
         body.setdefault("allowed_mentions", {"parse": []})
         if key:
             body["nonce"] = key[:25]
             body["enforce_nonce"] = True
-        return _post(self._client, self._url, json=body, headers=self._auth)
+        url = self._url
+        if channel_id:
+            if not channel_id.isdigit() or not 15 <= len(channel_id) <= 25:
+                raise ValueError("invalid Discord channel id")
+            url = f"{API_BASE}/channels/{channel_id}/messages"
+        return _post(self._client, url, json=body, headers=self._auth)
 
     def delete_message(self, message_id: str) -> int:
         if not message_id.isdigit():
