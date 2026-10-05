@@ -119,19 +119,36 @@ def test_impact_and_outlook_rendered_before_sources():
     )
     text = render_text(as_story(d), "Europe/Vienna")
     assert "🌍 **Region:** Global" in text
-    assert "🎯 **Impact:** EU users may see Marketplace split from Facebook." in text
-    assert text.index("Region:") < text.index("🎯")
+    assert "⭐ **Importance:** 5/10 — First large EU antitrust fine against Meta; few direct effects." in text
+    assert "🇦🇹 **Impact Austria:** EU users may see Marketplace split from Facebook." in text
+    assert "🌍 **Impact global:** Sets a precedent" in text
+    order = ["Region:", "**Confirmed", "Importance:", "Impact Austria:", "Impact global:", "🔮", "Sources:"]
+    assert [text.index(m) for m in order if m in text] == sorted(text.index(m) for m in order if m in text)
     assert "- Court overturns the fine → **unlikely, ~25 %** (antitrust lawyers quoted by Tagesschau)" in text
     assert "- Meta appeals → **very likely** (Meta announced it)" in text
-    assert text.index("🎯") < text.index("🔮") < text.index("📰 **Sources:**")
+    assert text.index("Impact global:") < text.index("🔮") < text.index("📰 **Sources:**")
 
 
 def test_no_outlook_section_without_outlook():
     text = render_text(as_story(story()), "Europe/Vienna")
-    assert "📍 **Region:** EU" in text and "🎯 **Impact:**" in text and "🔮" not in text
+    assert "📍 **Region:** EU" in text and "Impact Austria:" in text and "🔮" not in text
 
 
-@pytest.mark.parametrize("field", ["impact", "impact_region"])
+def test_impact_label_follows_reader_country():
+    text = render_text(as_story(story()), "Europe/Berlin", "Germany")
+    assert "🇩🇪 **Impact Germany:**" in text
+    assert "📍 **Impact Chile:**" in render_text(as_story(story()), "America/Santiago", "Chile")
+
+
+@pytest.mark.parametrize("value", [0, 11])
+def test_importance_scale_is_1_to_10(value):
+    with pytest.raises(ValueError):
+        as_story(story(importance=value))
+
+
+@pytest.mark.parametrize(
+    "field", ["impact", "impact_global", "impact_region", "importance", "importance_reason"]
+)
 def test_impact_and_region_are_required(field):
     d = story()
     del d[field]

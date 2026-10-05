@@ -78,8 +78,25 @@ def _region_line(story: Story) -> str:
     return f"{emoji} **Region:** {story.impact_region}"
 
 
-def _impact_lines(story: Story) -> list[str]:
-    lines = [f"🎯 **Impact:** {story.impact}"]
+_COUNTRY_FLAG = {
+    "austria": "🇦🇹",
+    "österreich": "🇦🇹",
+    "germany": "🇩🇪",
+    "deutschland": "🇩🇪",
+    "switzerland": "🇨🇭",
+    "schweiz": "🇨🇭",
+}
+
+
+def _impact_lines(story: Story, country: str) -> list[str]:
+    flag = _COUNTRY_FLAG.get(country.strip().lower(), "📍")
+    lines = [
+        f"⭐ **Importance:** {story.importance}/10 — {story.importance_reason}",
+        "",
+        f"{flag} **Impact {country}:** {story.impact}",
+        "",
+        f"🌍 **Impact global:** {story.impact_global}",
+    ]
     if story.outlook:
         lines += ["", "🔮 **Outlook:**"]
         for o in story.outlook:
@@ -115,8 +132,9 @@ _CATEGORY_EMOJI = {
 }
 
 
-def render_text(story: Story, display_tz: str) -> str:
-    """Discord markdown: heading, meta line, region, the body as written, impact/outlook, sources."""
+def render_text(story: Story, display_tz: str, country: str = "Austria") -> str:
+    """Discord markdown: heading, meta line, region, the body as written, importance, impact
+    (reader country, global), outlook, sources."""
     headline = story.headline
     prefix = _KIND_PREFIX[story.kind]
     if prefix and headline.lower().startswith(prefix.split(" ", 1)[1].lower()):
@@ -135,7 +153,7 @@ def render_text(story: Story, display_tz: str) -> str:
         "",
         story.body.strip(),
         "",
-        *_impact_lines(story),
+        *_impact_lines(story, country),
         "",
         _source_line(story),
     ]
@@ -143,9 +161,15 @@ def render_text(story: Story, display_tz: str) -> str:
 
 
 def build_payloads(
-    story: Story, *, username: str, limit: int, suppress_embeds: bool, display_tz: str
+    story: Story,
+    *,
+    username: str,
+    limit: int,
+    suppress_embeds: bool,
+    display_tz: str,
+    country: str = "Austria",
 ) -> list[dict[str, Any]]:
-    text = render_text(story, display_tz)
+    text = render_text(story, display_tz, country)
     chunks = split_message(text, limit)
     if len(chunks) > 1:
         chunks = split_message(text, limit - _CONTINUATION_RESERVE)

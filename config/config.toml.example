@@ -30,6 +30,8 @@ discord_daily_archive = "🗄-archiv"
 discord_daily_keep = 7
 # webhook mode only (fallback when no bot is configured)
 discord_username = "News Update"
+# Country the readers live in ("Impact Austria" line); keep it equal to build_prompt.py --country.
+reader_country = "Austria"
 max_message_chars = 1850
 suppress_link_embeds = true
 

@@ -207,7 +207,15 @@ class Story(Strict):
         str,
         StringConstraints(strip_whitespace=True, min_length=10, max_length=600),
         AfterValidator(_no_control),
-    ] = Field(description="What concretely changes or could change for the reader: who, how, from when.")
+    ] = Field(
+        description="What concretely changes or could change in the readers' country (reader_country): "
+        "who, how, from when."
+    )
+    impact_global: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=10, max_length=600),
+        AfterValidator(_no_control),
+    ] = Field(description="What it means beyond that country: Europe, other regions, the world.")
     impact_region: Annotated[
         str,
         StringConstraints(strip_whitespace=True, min_length=2, max_length=60),
@@ -231,7 +239,17 @@ class Story(Strict):
         AfterValidator(_no_control),
     ]
     confidence: Confidence
-    importance: int = Field(default=2, ge=1, le=3)
+    importance: int = Field(
+        ge=1,
+        le=10,
+        description="1-3 minor, 4-6 notable, 7-8 major, 9-10 exceptional (rare): how much it matters to "
+        "readers in reader_country.",
+    )
+    importance_reason: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=10, max_length=300),
+        AfterValidator(_no_control),
+    ] = Field(description="One sentence: why this importance score.")
     event_time: AwareDatetime | None = None
     sources: list[Source] = Field(min_length=1, max_length=MAX_SOURCES)
 

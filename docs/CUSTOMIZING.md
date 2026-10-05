@@ -46,7 +46,7 @@ python3 scripts/build_prompt.py \
 |---|---|---|
 | `--sources` | `src/newsrelay/sources.toml` | allowlist file the outlets are read from |
 | `--language` | English | language of headlines and post bodies |
-| `--country` (alias `--region`) | Austria | the country you live in: only stories that affect it are posted — global developments, events abroad with real consequences there, and its own consequential decisions |
+| `--country` (alias `--region`) | Austria | the country you live in: only stories that affect it are posted — global developments, events abroad with real consequences there, and its own consequential decisions. Set the same name as `reader_country` in `/etc/newsrelay/config.toml` (labels the "Impact <country>" line) |
 | `--topics` | broad list | narrow or widen the scope |
 | `--timezone` / `--time` | Europe/Vienna / 18:00 | date of the daily run key; reminder in the header |
 

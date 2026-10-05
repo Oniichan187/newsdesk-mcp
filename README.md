@@ -41,7 +41,11 @@ hacker group on Thursday.
 
 **Confirmed / unclear:** The breach is confirmed; whether medical records were taken is still open.
 
-🎯 **Impact:** About 1.2 million insured people should expect phishing mails and calls …
+⭐ **Importance:** 7/10 — one of the largest health-data breaches in Austria.
+
+🇦🇹 **Impact Austria:** About 1.2 million insured people should expect phishing mails and calls …
+
+🌍 **Impact global:** Adds to a wave of attacks on European health insurers …
 
 🔮 **Outlook:**
 - Medical records turn out to be affected → **open (about even)** (insurer's statement)
