@@ -42,8 +42,17 @@ def test_custom_options(tmp_path):
         encoding="utf-8",
     )
     assert bp.read_sources(f) == ["Outlet A (a.example)", "b.example"]
-    text = bp.build(["Outlet A"], language="German", region="Switzerland", timezone="Europe/Zurich")
-    assert "German Discord markdown" in text and "Switzerland" in text and "Europe/Zurich" in text
+    text = bp.build(["Outlet A"], language="German", country="Switzerland", timezone="Europe/Zurich")
+    assert "German Discord markdown" in text and "Europe/Zurich" in text
+    assert "**Switzerland test**" in text and "people in Switzerland" in text
+    assert "people in Austria" not in text
+
+
+def test_country_option_and_region_alias(capsys):
+    for flag in ("--country", "--region"):
+        assert bp.main([flag, "Germany"]) == 0
+        out = capsys.readouterr().out
+        assert "**Germany test**" in out and "consequences for Germany" in out
 
 
 def test_readme_lists_every_allowed_outlet():

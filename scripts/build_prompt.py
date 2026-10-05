@@ -7,6 +7,7 @@ The list of outlets comes from the same file the relay enforces: src/newsrelay/s
 Examples:
     python3 scripts/build_prompt.py                                   # built-in list, English, 18:00
     python3 scripts/build_prompt.py --language German --time 07:00
+    python3 scripts/build_prompt.py --country Germany --timezone Europe/Berlin
     python3 scripts/build_prompt.py --sources /etc/newsrelay/sources.toml > my-task-prompt.md
 
 Only the Python standard library is used.
@@ -49,7 +50,7 @@ def build(
     sources: list[str],
     *,
     language: str = "English",
-    region: str = "Austria",
+    country: str = "Austria",
     topics: str = DEFAULT_TOPICS,
     timezone: str = "Europe/Vienna",
 ) -> str:
@@ -57,7 +58,7 @@ def build(
     values = {
         "SOURCES": ", ".join(sources),
         "LANGUAGE": language,
-        "REGION": region,
+        "COUNTRY": country,
         "TOPICS": topics,
         "TIMEZONE": timezone,
     }
@@ -74,14 +75,18 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--sources", type=Path, default=DEFAULT_SOURCES, help="sources.toml allowlist")
     p.add_argument("--language", default="English", help="language of the Discord posts")
     p.add_argument(
-        "--region", default="Austria", help="where the readers live; only news affecting it is posted"
+        "--country",
+        "--region",
+        dest="country",
+        default="Austria",
+        help="country the readers live in; only news that affects it is posted",
     )
     p.add_argument("--topics", default=DEFAULT_TOPICS, help="comma-separated topic scope")
     p.add_argument("--timezone", default="Europe/Vienna", help="IANA timezone used for the daily run key")
     p.add_argument("--time", default="18:00", help="time of day the task runs (shown in the header only)")
     a = p.parse_args(argv)
     body = build(
-        read_sources(a.sources), language=a.language, region=a.region, topics=a.topics, timezone=a.timezone
+        read_sources(a.sources), language=a.language, country=a.country, topics=a.topics, timezone=a.timezone
     )
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")  # Windows consoles default to a legacy codepage

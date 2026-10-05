@@ -2,7 +2,7 @@
 
 This is the default prompt — **daily at 18:00 Europe/Vienna**, posts in English, going through the
 outlets of the source allowlist [`src/newsrelay/sources.toml`](../src/newsrelay/sources.toml) (the relay
-rejects sources outside that list). Changed the list, or want another language, region or time?
+rejects sources outside that list). Changed the list, or want another language, country or time?
 Regenerate the prompt — see [CUSTOMIZING.md](CUSTOMIZING.md):
 
 ```sh

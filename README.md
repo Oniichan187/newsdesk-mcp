@@ -86,7 +86,7 @@ When a simple RSS bot is enough for you, use one — it is easier to set up. Use
   HTTP, secrets as systemd credentials, hardened units (`systemd-analyze security` ≈ 1.1).
 - **Set and forget** — watchdogs, health timer, verified backups, integrity checks, retention,
   safe upgrades with automatic rollback.
-- **Only the sources you allow** — an enforced allowlist of outlets; language, region and topics of
+- **Only the sources you allow** — an enforced allowlist of outlets; language, country and topics of
   the posts are set with one command.
 
 ## 🧭 How it works
@@ -156,10 +156,10 @@ these outlets. Edit the file to use your own.
 
 </details>
 
-**Prompt** — language, region, topics and time in one command:
+**Prompt** — language, country, topics and time in one command:
 
 ```sh
-python3 scripts/build_prompt.py --language German --region Germany --time 07:00 > my-task-prompt.md
+python3 scripts/build_prompt.py --language German --country Germany --time 07:00 > my-task-prompt.md
 ```
 
 Everything else (channel, layout, memory, retention): [CUSTOMIZING.md](docs/CUSTOMIZING.md).
@@ -210,9 +210,9 @@ call per run. See [CHATGPT_SETUP.md](docs/CHATGPT_SETUP.md) for the current deta
 No. The Pi only stores memory, matches candidates and delivers to Discord (~100 MB RAM). The research
 and writing happen in ChatGPT.
 
-**Can I use other news sources, another language or region?**
+**Can I use other news sources, another language or country?**
 Yes. Edit the allowlist in [`src/newsrelay/sources.toml`](src/newsrelay/sources.toml) and regenerate the
-prompt with `scripts/build_prompt.py --language … --region … --time …` — see
+prompt with `scripts/build_prompt.py --language … --country … --time …` — see
 [CUSTOMIZING.md](docs/CUSTOMIZING.md).
 
 **Is it safe to expose a server to the internet for ChatGPT?**
