@@ -62,6 +62,9 @@ class Config:
     discord_daily_category_id: str = ""
     discord_daily_archive: str = "🗄-archiv"
     discord_daily_keep: int = 7
+    # Country the readers live in; labels the "Impact <country>" line. Keep it equal to the
+    # --country the task prompt was built with.
+    reader_country: str = "Austria"
     max_message_chars: int = 1850
     suppress_link_embeds: bool = True
     min_send_interval_s: float = 2.5

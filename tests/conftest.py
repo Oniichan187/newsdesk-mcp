@@ -107,6 +107,9 @@ def story(cid: str = "c1", **kw: Any) -> dict[str, Any]:
         "entities": ["European Commission", "Meta", "Facebook Marketplace"],
         "impact": "Marketplace may be unbundled from Facebook for EU users.",
         "impact_region": "EU",
+        "impact_global": "Sets a precedent for EU antitrust cases against other large platforms.",
+        "importance": 5,
+        "importance_reason": "First large EU antitrust fine against Meta; few direct effects.",
         "topic_state_summary": "EU fined Meta €798m for Marketplace tying; Meta to appeal.",
         "confidence": "confirmed",
         "sources": [

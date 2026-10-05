@@ -366,6 +366,7 @@ def _store_story(
         limit=cfg.max_message_chars,
         suppress_embeds=cfg.suppress_link_embeds,
         display_tz=cfg.display_timezone,
+        country=cfg.reader_country,
     )
     seq = seq_start
     for i, payload in enumerate(payloads):

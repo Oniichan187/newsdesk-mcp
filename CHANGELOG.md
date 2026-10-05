@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.7.0 — 2026-10-06
+
+- Story footer, in order: **⭐ Importance X/10** with a one-sentence reason (`importance` is now
+  1–10, `importance_reason` required), **Impact <country>** (`impact`) and **🌍 Impact global**
+  (`impact_global`, required), then Outlook and sources.
+- `reader_country` (config, default `Austria`) labels the country impact line; keep it equal to
+  `build_prompt.py --country`.
+- Prompt: "What happened" is 3–6 sentences with the needed background, strictly informative — no
+  clickbait, teasers, rhetorical questions or dramatising wording; body guideline ~2,000 characters.
+
 ## 1.6.0 — 2026-10-05
 
 - **Daily channels** (bot mode, `discord_daily_channels = true`): every day's briefing gets its own
