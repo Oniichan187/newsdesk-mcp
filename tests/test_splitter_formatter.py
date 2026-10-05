@@ -150,3 +150,28 @@ def test_outlook_percent_must_fit_level(level, pct):
     )
     with pytest.raises(ValueError):
         as_story(d)
+
+
+def test_several_sources_all_rendered():
+    d = story(
+        sources=[
+            {"url": "https://www.tagesschau.de/a/meta-100.html", "name": "Tagesschau"},
+            {"url": "https://www.derstandard.at/story/1", "name": "Der Standard"},
+            {"url": "https://orf.at/stories/3400000/", "name": "ORF"},
+        ]
+    )
+    text = render_text(as_story(d), "Europe/Vienna")
+    assert "[Tagesschau](" in text and "[Der Standard](" in text and "[ORF](" in text
+
+
+@pytest.mark.parametrize(
+    "sources",
+    [
+        [{"url": "https://orf.at/"}],
+        [{"url": "https://www.derstandard.at"}],
+        [{"url": "https://orf.at/stories/1/"}, {"url": "https://orf.at/stories/1/"}],
+    ],
+)
+def test_homepage_and_duplicate_sources_rejected(sources):
+    with pytest.raises(ValueError):
+        as_story(story(sources=sources))
