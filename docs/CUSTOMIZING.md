@@ -60,10 +60,12 @@ runs per day, change the run key in the prompt to `news/YYYY-MM-DDTHH` — no ba
 | Channel | `discord_channel_id = "…"` in `/etc/newsrelay/config.toml`, then `sudo systemctl restart newsrelay-worker` |
 | Bot name / avatar | Discord Developer Portal → your application → Bot |
 | Bot token | `sudo newsrelay set-bot-token` (hidden input, stored as a root-only systemd credential) |
-| Message length | `max_message_chars` (default 1850; Discord's hard limit is 2000) |
+| Message length | `max_message_chars` (default 1990; Discord's hard limit is 2000); longer stories are split at paragraph boundaries without markers |
 | Link previews | `suppress_link_embeds = false` to show previews |
 | Online status | `discord_presence = true/false`, `discord_presence_status` (online/idle/dnd), `discord_presence_activity_type` (watching/playing/listening/competing), `discord_presence_text`; then `sudo systemctl restart newsrelay-presence` |
 | One channel per day + archive | Create a category yourself (e.g. `📰 Tagesbriefing`; the bot never creates or moves it), copy its ID (Developer Mode → right-click → Copy ID), then `discord_daily_channels = true`, `discord_daily_category_id = "…"`; optional `discord_daily_keep` (7), `discord_daily_archive` (`🗄-archiv`); bot needs **Manage Channels**; restart `newsrelay-worker` |
+| Briefing PDF | `briefing_pdf = true/false`. Each published run gets a phone-sized PDF (IBM Plex Serif, Bionic Reading, linked contents and sources), posted before the stories and stored under `/var/lib/newsrelay/briefings/<day>/`. Design: [`src/newsrelay/briefing/pdf.py`](../src/newsrelay/briefing/pdf.py) |
+| Speed reader (RSVP) | `newsrelay-reader.service` serves one page per day on `127.0.0.1:8788` (100–2000 words per minute, keyboard and touch controls, links to the PDFs). Publish it **inside the tailnet only** with `sudo sh scripts/expose-reader.sh` (https://<pi>.<tailnet>.ts.net:8443, not reachable from the internet); set `reader_url` to link it under the PDF |
 | Webhook instead of bot | `sudo newsrelay set-webhook`, leave `discord_channel_id` empty; `discord_username` sets the name |
 
 Post layout (heading, category emoji, source line) is in

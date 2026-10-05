@@ -79,7 +79,7 @@ def test_n_long_story_payloads_within_limit_and_numbered():  # TEST M + N
     )
     assert len(payloads) >= 2
     assert all(ulen(p["content"]) <= LIMIT for p in payloads)
-    assert "(2/" in payloads[1]["content"]
+    assert all("continued" not in p["content"] and not p["content"].startswith("-#") for p in payloads)
     assert len(json.dumps(payloads[0])) < 8000
 
 

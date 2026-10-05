@@ -92,6 +92,8 @@ When a simple RSS bot is enough for you, use one — it is easier to set up. Use
   safe upgrades with automatic rollback.
 - **Only the sources you allow** — an enforced allowlist of outlets; language, country and topics of
   the posts are set with one command.
+- **Made for reading** — every briefing also arrives as a calm, phone-sized PDF with Bionic Reading,
+  and a tailnet-only speed reader (RSVP, 100–2000 words per minute) shows each day word by word.
 
 ## 🧭 How it works
 
@@ -254,5 +256,6 @@ see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## 📄 License
 
-[MIT](LICENSE). News content belongs to the respective publishers; the bot posts short summaries with
+[MIT](LICENSE). The bundled IBM Plex Serif fonts are under the
+[SIL Open Font License](src/newsrelay/briefing/fonts/OFL.txt). News content belongs to the respective publishers; the bot posts short summaries with
 links to the original articles.

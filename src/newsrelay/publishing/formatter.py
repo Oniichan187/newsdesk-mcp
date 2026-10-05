@@ -49,7 +49,6 @@ _LIKELIHOOD_LABEL = {
     "very_unlikely": "very unlikely",
 }
 _KIND_PREFIX = {"NEW": "", "UPDATE": "🔄 Update: ", "CORRECTION": "✏️ Correction: "}
-_CONTINUATION_RESERVE = 24
 
 # Mass mentions and user/role/channel mention syntax are neutralized textually *and* via
 # allowed_mentions={"parse": []}, so generated or injected text can never ping anyone.
@@ -160,6 +159,20 @@ def render_text(story: Story, display_tz: str, country: str = "Austria") -> str:
     return sanitize_mentions("\n".join(parts))
 
 
+def briefing_payload(path: str, title: str, stories: int, reader_url: str) -> dict[str, Any]:
+    """The message that carries the day's PDF; it is queued before the stories."""
+    count = f"{stories} {'story' if stories == 1 else 'stories'}"
+    lines = [f"**{title}**", f"{count} · PDF for reading on any device"]
+    if reader_url:
+        lines.append(f"Speed reading: <{reader_url}>")
+    return {
+        "content": sanitize_mentions("\n".join(lines)),
+        "allowed_mentions": {"parse": []},
+        "flags": 4,
+        "file": {"path": path, "name": path.replace("\\", "/").rsplit("/", 1)[-1]},
+    }
+
+
 def build_payloads(
     story: Story,
     *,
@@ -171,10 +184,6 @@ def build_payloads(
 ) -> list[dict[str, Any]]:
     text = render_text(story, display_tz, country)
     chunks = split_message(text, limit)
-    if len(chunks) > 1:
-        chunks = split_message(text, limit - _CONTINUATION_RESERVE)
-        total = len(chunks)
-        chunks = [c if i == 0 else f"-# ({i + 1}/{total}) continued\n{c}" for i, c in enumerate(chunks)]
     payloads = []
     for chunk in chunks:
         assert ulen(chunk) <= limit
