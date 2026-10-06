@@ -69,6 +69,9 @@ class Config:
     # with scripts/expose-reader.sh. reader_url (optional) is linked under the PDF in Discord.
     reader_listen_port: int = 8788
     reader_url: str = ""
+    # Public reader via Cloudflare quick tunnel (newsrelay-tunnel.service): when reader_url is empty,
+    # the current https://<random>.trycloudflare.com address is read from cloudflared's metrics port.
+    reader_tunnel_metrics: str = "127.0.0.1:20241"
     # Country the readers live in; labels the "Impact <country>" line. Keep it equal to the
     # --country the task prompt was built with.
     reader_country: str = "Austria"

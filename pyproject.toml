@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "newsrelay"
-version = "1.8.1"
+version = "1.9.0"
 description = "ChatGPT -> Discord news relay: dedup memory, durable outbox, MCP interface"
 requires-python = ">=3.11"
 license = { text = "MIT" }

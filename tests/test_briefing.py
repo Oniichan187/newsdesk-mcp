@@ -189,6 +189,61 @@ def test_stories_from_before_schema_3_are_still_readable(cfg, conn, clock):
     assert "Importance" not in labels and "Impact Austria" not in labels
 
 
+class _Tunnel:
+    """Stands in for cloudflared's metrics server."""
+
+    def __init__(self, body: dict) -> None:
+        import threading
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+        outer = self
+        self.paths: list[str] = []
+
+        class H(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):
+                outer.paths.append(self.path)
+                data = json.dumps(body).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), H)
+        self.addr = f"127.0.0.1:{self.server.server_address[1]}"
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+
+def test_reader_link_prefers_config_then_quick_tunnel(cfg):
+    from newsrelay.briefing.link import reader_link
+
+    t = _Tunnel({"hostname": "calm-river-1234.trycloudflare.com"})
+    try:
+        assert (
+            reader_link(dataclasses.replace(cfg, reader_url="https://news.example")) == "https://news.example"
+        )
+        assert reader_link(dataclasses.replace(cfg, reader_tunnel_metrics=t.addr)) == (
+            "https://calm-river-1234.trycloudflare.com"
+        )
+        assert t.paths == ["/quicktunnel"]
+    finally:
+        t.server.shutdown()
+    bad = _Tunnel({"hostname": "evil.example.com"})
+    try:
+        assert reader_link(dataclasses.replace(cfg, reader_tunnel_metrics=bad.addr)) == ""
+    finally:
+        bad.server.shutdown()
+    assert (
+        reader_link(dataclasses.replace(cfg, reader_tunnel_metrics="10.0.0.1:20241")) == ""
+    )  # loopback only
+    assert (
+        reader_link(dataclasses.replace(cfg, reader_tunnel_metrics=f"127.0.0.1:{free_port()}")) == ""
+    )  # down
+
+
 def test_reader_pages(cfg, conn, clock):
     cfg = dataclasses.replace(cfg, briefing_pdf=True)
     service.publish_digest(conn, cfg, publish_input("daily-news/2026-10-03", [_rich()]))

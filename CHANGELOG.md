@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.9.0 — 2026-10-07
+
+- **Public reader via Cloudflare Tunnel** (frontend only; the MCP backend stays on Tailscale Funnel):
+  `newsrelay-tunnel.service` + `scripts/expose-reader-public.sh` (installs cloudflared from
+  Cloudflare's apt repository). Quick tunnel without an account, or a named tunnel with a fixed
+  hostname via `/etc/newsrelay/tunnel.env`.
+- The link under the PDF uses `reader_url`, else the current quick-tunnel address from cloudflared's
+  loopback metrics port (`reader_tunnel_metrics`); only `*.trycloudflare.com` answers are accepted.
+
 ## 1.8.1 — 2026-10-06
 
 - Briefing PDF: smaller type (body 8.8 pt, headlines 12.5 pt) — more text per phone screen.
