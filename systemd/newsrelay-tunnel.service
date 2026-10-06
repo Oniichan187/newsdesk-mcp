@@ -13,6 +13,9 @@ DynamicUser=yes
 # domain). Without it a quick tunnel (https://<random>.trycloudflare.com) is used; its address changes
 # when this service restarts, and the relay looks it up at 127.0.0.1:20241/quicktunnel.
 EnvironmentFile=-/etc/newsrelay/tunnel.env
+# cloudflared's Go resolver fails on Tailscale MagicDNS answers for region1.v2.argotunnel.com
+# ("no such host" on 100.100.100.100); this service alone uses public resolvers.
+BindReadOnlyPaths=/opt/newsrelay/current/src/systemd/newsrelay-tunnel.resolv.conf:/etc/resolv.conf
 ExecStart=/bin/sh -c 'if [ -n "$TUNNEL_TOKEN" ]; then exec /usr/bin/cloudflared tunnel --no-autoupdate --metrics 127.0.0.1:20241 run; else exec /usr/bin/cloudflared tunnel --no-autoupdate --metrics 127.0.0.1:20241 --url http://127.0.0.1:8788; fi'
 Restart=always
 RestartSec=10
