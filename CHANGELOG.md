@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.10.1 — 2026-10-07
+
+- Speed reader: smaller main word (max 2.4rem instead of 3.6rem); neighbouring words relatively larger.
+
 ## 1.10.0 — 2026-10-07
 
 - Reader index as a folder tree: year > month > ISO week > day, collapsible, newest branch open.
