@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.1 — 2026-10-07
+
+- `newsrelay-tunnel.service` resolves through public DNS (1.1.1.1, 9.9.9.9) from a bind-mounted
+  resolv.conf: on a Tailscale host cloudflared's own resolver could not look up the Cloudflare edge
+  via MagicDNS and the quick tunnel restarted in a loop. The rest of the system keeps MagicDNS.
+
 ## 1.9.0 — 2026-10-07
 
 - **Public reader via Cloudflare Tunnel** (frontend only; the MCP backend stays on Tailscale Funnel):
