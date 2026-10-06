@@ -12,6 +12,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from . import __version__, timeutil
+from .briefing.link import reader_link
 from .briefing.pdf import long_date
 from .briefing.store import write_pdf
 from .config import Config
@@ -414,7 +415,7 @@ def _enqueue(
         if path is not None:
             day = timeutil.now().astimezone(ZoneInfo(cfg.display_timezone)).date()
             payload = briefing_payload(
-                str(path), f"Daily Briefing · {_day_title(day)}", len(published), cfg.reader_url
+                str(path), f"Daily Briefing · {_day_title(day)}", len(published), reader_link(cfg)
             )
             key = hashlib.sha256(f"{run_key}|briefing-pdf".encode()).hexdigest()
             queue.insert(0, (None, -1, key, json.dumps(payload, ensure_ascii=False)))

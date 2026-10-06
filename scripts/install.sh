@@ -181,6 +181,12 @@ systemctl reset-failed newsrelay-presence.service 2>/dev/null || true
 systemctl restart newsrelay-presence.service || say "WARNING: presence service did not start (cosmetic only)"
 systemctl reset-failed newsrelay-reader.service 2>/dev/null || true
 systemctl restart newsrelay-reader.service || say "WARNING: reader service did not start (optional)"
+# Public reader tunnel (optional, set up by scripts/expose-reader-public.sh): refresh the unit file only;
+# not restarted here, because a quick tunnel gets a new address on every restart.
+if systemctl is-enabled --quiet newsrelay-tunnel.service 2>/dev/null; then
+  install -m 0644 -o root -g root "$APP/current/src/systemd/newsrelay-tunnel.service" /etc/systemd/system/newsrelay-tunnel.service
+  systemctl daemon-reload
+fi
 
 # --- 8. verify (API ready + worker heartbeat), otherwise full rollback ---------------------------
 PORT=$(sed -n 's/^listen_port *= *\([0-9]*\).*/\1/p' "$ETC/config.toml"); PORT=${PORT:-8787}

@@ -1,0 +1,46 @@
+[Unit]
+Description=News Relay public reader via Cloudflare Tunnel (frontend only; the MCP backend stays on Tailscale)
+Documentation=file:///opt/newsrelay/current/src/docs/CUSTOMIZING.md
+After=network-online.target newsrelay-reader.service
+Wants=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=10
+
+[Service]
+Type=simple
+DynamicUser=yes
+# Optional, root-only: TUNNEL_TOKEN=... for a named tunnel with a fixed hostname (Cloudflare account +
+# domain). Without it a quick tunnel (https://<random>.trycloudflare.com) is used; its address changes
+# when this service restarts, and the relay looks it up at 127.0.0.1:20241/quicktunnel.
+EnvironmentFile=-/etc/newsrelay/tunnel.env
+ExecStart=/bin/sh -c 'if [ -n "$TUNNEL_TOKEN" ]; then exec /usr/bin/cloudflared tunnel --no-autoupdate --metrics 127.0.0.1:20241 run; else exec /usr/bin/cloudflared tunnel --no-autoupdate --metrics 127.0.0.1:20241 --url http://127.0.0.1:8788; fi'
+Restart=always
+RestartSec=10
+
+# Hardening (cloudflared needs outbound network to Cloudflare's edge, nothing else)
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+MemoryMax=200M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

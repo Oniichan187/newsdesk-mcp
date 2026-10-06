@@ -39,6 +39,9 @@ briefing_pdf = true
 # tailnet only: sudo sh scripts/expose-reader.sh. reader_url is linked under the PDF in Discord.
 reader_listen_port = 8788
 reader_url = ""
+# Public reader via Cloudflare (sudo sh scripts/expose-reader-public.sh). With reader_url empty the
+# current quick-tunnel address is read from cloudflared's metrics port and linked under the PDF.
+reader_tunnel_metrics = "127.0.0.1:20241"
 suppress_link_embeds = true
 
 # Retention (compact identity data — titles, facts, fingerprints, URLs — is kept forever)
