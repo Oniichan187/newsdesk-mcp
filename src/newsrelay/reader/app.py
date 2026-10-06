@@ -10,14 +10,14 @@ import html
 import json
 import re
 import sqlite3
-from datetime import date
+from datetime import date, timedelta
 
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
 from starlette.routing import Route
 
-from ..briefing.pdf import long_date
+from ..briefing.pdf import MONTHS, long_date
 from ..briefing.store import day_pdfs, day_stories, days
 from ..briefing.text import reading_words
 from ..config import Config
@@ -45,6 +45,59 @@ def _title(d: date) -> str:
     return f"{weekday}, {long}"
 
 
+def _count(n: int) -> str:
+    return f"{n} {'story' if n == 1 else 'stories'}"
+
+
+def _day_row(cfg: Config, d: date, n: int) -> str:
+    weekday, _ = long_date(d)
+    pdfs = "".join(
+        f'<a class="ghost" href="/day/{d.isoformat()}/pdf/{p.name}">PDF</a>' for p in day_pdfs(cfg, d)
+    )
+    return (
+        f'<li><div><div class="date">{weekday}, {d.day} {MONTHS[d.month - 1]}</div>'
+        f'<div class="muted">{_count(n)}</div></div>'
+        f'<div class="actions"><a class="primary" href="/day/{d.isoformat()}">Read</a>{pdfs}</div></li>'
+    )
+
+
+def _tree(cfg: Config, listing: list[tuple[date, int]]) -> str:
+    """Year > month > ISO week > day, newest first; only the newest branch starts expanded."""
+    years: dict[int, dict[int, dict[tuple[int, int], list[tuple[date, int]]]]] = {}
+    for d, n in sorted(listing, reverse=True):
+        iso = d.isocalendar()
+        years.setdefault(d.year, {}).setdefault(d.month, {}).setdefault((iso.year, iso.week), []).append(
+            (d, n)
+        )
+    out: list[str] = []
+    first = True
+    for year, months in years.items():
+        y_total = sum(n for weeks in months.values() for days_ in weeks.values() for _, n in days_)
+        out.append(
+            f'<details class="y"{" open" if first else ""}><summary>{year}<span>{_count(y_total)}</span></summary>'
+        )
+        for month, weeks in months.items():
+            m_total = sum(n for days_ in weeks.values() for _, n in days_)
+            out.append(
+                f'<details class="m"{" open" if first else ""}><summary>{MONTHS[month - 1]}'
+                f"<span>{_count(m_total)}</span></summary>"
+            )
+            for (_, week), days_ in weeks.items():
+                start = days_[0][0] - timedelta(days=days_[0][0].weekday())
+                end = start + timedelta(days=6)
+                span = f"{start.day} {MONTHS[start.month - 1][:3]} – {end.day} {MONTHS[end.month - 1][:3]}"
+                out.append(
+                    f'<details class="w"{" open" if first else ""}><summary>Week {week}'
+                    f"<span>{span} · {_count(sum(n for _, n in days_))}</span></summary><ul>"
+                )
+                out.extend(_day_row(cfg, d, n) for d, n in days_)
+                out.append("</ul></details>")
+                first = False
+            out.append("</details>")
+        out.append("</details>")
+    return "".join(out)
+
+
 def create_reader_app(cfg: Config) -> Starlette:
     def db() -> sqlite3.Connection:
         return connect(cfg.db_path, readonly=True)
@@ -55,17 +108,7 @@ def create_reader_app(cfg: Config) -> Starlette:
             listing = days(conn, cfg)
         finally:
             conn.close()
-        items = []
-        for d, n in listing:
-            pdfs = "".join(
-                f'<a class="ghost" href="/day/{d.isoformat()}/pdf/{p.name}">PDF</a>' for p in day_pdfs(cfg, d)
-            )
-            items.append(
-                f'<li><div><div class="date">{html.escape(_title(d))}</div>'
-                f'<div class="muted">{n} {"story" if n == 1 else "stories"}</div></div>'
-                f'<div class="actions"><a class="primary" href="/day/{d.isoformat()}">Read</a>{pdfs}</div></li>'
-            )
-        body = "".join(items) or '<li class="muted">No briefings yet.</li>'
+        body = _tree(cfg, listing) or '<p class="muted">No briefings yet.</p>'
         return HTMLResponse(INDEX_HTML.replace("{{ITEMS}}", body), headers=HEADERS)
 
     async def day_page(req: Request) -> Response:
@@ -138,6 +181,17 @@ INDEX_HTML = (
     + """
 ul{list-style:none;padding:0;margin:0}li{display:flex;justify-content:space-between;align-items:center;gap:12px;
 background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px}
+details{margin:0 0 8px}summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;
+align-items:baseline;gap:12px;padding:10px 4px;border-bottom:1px solid var(--line)}
+summary::-webkit-details-marker{display:none}
+summary:before{content:"";width:7px;height:7px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);
+transform:rotate(-45deg);margin-right:10px;transition:transform .15s;flex:none;align-self:center}
+details[open]>summary:before{transform:rotate(45deg)}
+summary span{margin-left:auto;font-size:.8rem;color:var(--muted);font-weight:400}
+.y>summary{font-family:"Iowan Old Style","Palatino Linotype",Georgia,serif;font-size:1.5rem;font-weight:600}
+.m{margin-left:6px}.m>summary{font-size:1.1rem;font-weight:600}
+.w{margin-left:12px}.w>summary{font-size:.92rem;color:var(--muted);font-weight:600}
+.w ul{margin:10px 0 4px}
 .date{font-weight:600}.actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .actions a{text-decoration:none;padding:8px 14px;border-radius:999px;font-weight:600;font-size:.9rem}
 .primary{background:var(--accent);color:var(--bg)!important}.ghost{border:1px solid var(--line)}
@@ -166,12 +220,16 @@ user-select:none;-webkit-user-select:none;cursor:pointer}
 .guide{position:relative;margin:10px 0}
 .guide:before,.guide:after{content:"";position:absolute;left:50%;width:2px;height:12px;background:var(--line);transform:translateX(-1px)}
 .guide:before{top:-12px}.guide:after{bottom:-12px}
-.word{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;
+.word{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:baseline;
 font-family:"Iowan Old Style","Palatino Linotype",Georgia,serif;font-size:clamp(2rem,8.5vw,3.6rem);
 line-height:1.25;padding:14px 0;white-space:pre}
-.pre{text-align:right}.piv{color:var(--pivot)}.post{text-align:left}
-.context{font-size:.9rem;color:var(--muted);text-align:center;min-height:2.8em;margin-top:6px;line-height:1.4}
-.context mark{background:none;color:var(--ink);font-weight:600}
+.side{display:flex;align-items:baseline;overflow:hidden;min-width:0}
+.side.l{justify-content:flex-end;-webkit-mask-image:linear-gradient(90deg,transparent,#000 55%);
+mask-image:linear-gradient(90deg,transparent,#000 55%)}
+.side.r{justify-content:flex-start;-webkit-mask-image:linear-gradient(270deg,transparent,#000 55%);
+mask-image:linear-gradient(270deg,transparent,#000 55%)}
+.piv{color:var(--pivot)}.pre,.post{flex:none}
+.ctx{flex:none;font-size:.42em;color:var(--muted);white-space:pre}
 .bar{height:4px;background:var(--line);border-radius:4px;margin:16px 0 6px;overflow:hidden}
 .bar i{display:block;height:100%;width:0;background:var(--accent)}
 .status{display:flex;justify-content:space-between;font-size:.8rem;color:var(--muted)}
@@ -197,8 +255,7 @@ border-radius:999px;padding:4px 10px;cursor:pointer}
 <section class="stage" id="stage" aria-live="off">
 <div class="meta" id="meta"></div><div class="headline" id="headline"></div>
 <div class="label" id="label"></div>
-<div class="guide"><div class="word" id="word"><span class="pre"></span><span class="piv"></span><span class="post"></span></div></div>
-<div class="context" id="context"></div>
+<div class="guide"><div class="word" id="word"><span class="side l"><span class="ctx" id="ctxl"></span><span class="pre" id="pre"></span></span><span class="piv" id="piv"></span><span class="side r"><span class="post" id="post"></span><span class="ctx" id="ctxr"></span></span></div></div>
 <div class="bar"><i id="bar"></i></div>
 <div class="status"><span id="pos"></span><span id="left"></span></div>
 </section>
@@ -209,7 +266,7 @@ border-radius:999px;padding:4px 10px;cursor:pointer}
 <input type="range" id="wpm" min="100" max="2000" step="10">
 <input type="number" id="wpmn" min="100" max="2000" step="10" aria-label="Words per minute"></div>
 <div class="presets" id="presets"></div>
-<div class="opts"><label><input type="checkbox" id="ctx" checked> Show context</label>
+<div class="opts"><label><input type="checkbox" id="ctx" checked> Show neighbouring words</label>
 <label><input type="checkbox" id="pause" checked> Pause longer at punctuation</label></div></section>
 <p class="hint">Space: play/pause · Left/Right: 10 words · Up/Down: speed ±25 · Tap the word to play or pause.</p>
 </main>
@@ -239,18 +296,20 @@ function delay(t) {
   return d;
 }
 function context(at) {
-  if (!$("ctx").checked) return "";
-  const a = Math.max(0, at - 6), b = Math.min(tokens.length, at + 7); let out = [];
-  for (let k = a; k < b; k++) { if (tokens[k].si !== tokens[at].si) continue; const e = tokens[k].w.replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); out.push(k === at ? "<mark>" + e + "</mark>" : e); }
-  return out.join(" ");
+  // Neighbouring words of the same story, faded in beside the main word (plain text only).
+  if (!$("ctx").checked) return ["", ""];
+  const si = tokens[at].si, before = [], after = [];
+  for (let k = at - 1; k >= 0 && before.length < 8 && tokens[k].si === si; k--) before.unshift(tokens[k].w);
+  for (let k = at + 1; k < tokens.length && after.length < 8 && tokens[k].si === si; k++) after.push(tokens[k].w);
+  return [before.length ? before.join(" ") + "  " : "", after.length ? "  " + after.join(" ") : ""];
 }
 function render() {
   if (!tokens.length) { $("headline").textContent = "No stories for this day."; return; }
   const t = tokens[i], s = DATA.stories[t.si];
-  const [a, b, c] = splitWord(t.w); const spans = $("word").children;
-  spans[0].textContent = a; spans[1].textContent = b; spans[2].textContent = c;
+  const [a, b, c] = splitWord(t.w);
+  $("pre").textContent = a; $("piv").textContent = b; $("post").textContent = c;
+  const [left, right] = context(i); $("ctxl").textContent = left; $("ctxr").textContent = right;
   $("label").textContent = t.label; $("meta").textContent = s.meta; $("headline").textContent = s.headline;
-  $("context").innerHTML = context(i);
   $("bar").style.width = (100 * (i + 1) / tokens.length) + "%";
   $("pos").textContent = "Story " + (t.si + 1) + " of " + DATA.stories.length + " · word " + (i + 1) + " of " + tokens.length;
   const mins = (tokens.length - i) / wpm; $("left").textContent = mins < 1 ? Math.ceil(mins * 60) + " s left" : Math.ceil(mins) + " min left";

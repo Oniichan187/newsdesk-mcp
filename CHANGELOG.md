@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.0 — 2026-10-07
+
+- Reader index as a folder tree: year > month > ISO week > day, collapsible, newest branch open.
+- Speed reader: neighbouring words fade in on the same line, left and right of the pivot-aligned word
+  (smaller, muted, fading towards the edges) instead of a separate line below.
+
 ## 1.9.1 — 2026-10-07
 
 - `newsrelay-tunnel.service` resolves through public DNS (1.1.1.1, 9.9.9.9) from a bind-mounted

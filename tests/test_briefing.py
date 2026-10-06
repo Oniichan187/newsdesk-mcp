@@ -253,10 +253,13 @@ def test_reader_pages(cfg, conn, clock):
         with httpx.Client(base_url=srv.base) as c:
             index = c.get("/")
             assert index.status_code == 200 and "/day/2026-10-03" in index.text
+            for level in ("<summary>2026", "<summary>October", "<summary>Week 40", "Saturday, 3 October"):
+                assert level in index.text  # year > month > week > day
             assert "default-src 'none'" in index.headers["content-security-policy"]
             page = c.get("/day/2026-10-03")
             assert page.status_code == 200
             assert 'min="100" max="2000"' in page.text
+            assert 'id="ctxl"' in page.text and 'id="ctxr"' in page.text  # context beside the word
             assert "EU fines Meta" in page.text and "Impact Austria" in page.text
             assert f"/day/2026-10-03/pdf/{name}" in page.text
             pdf = c.get(f"/day/2026-10-03/pdf/{name}")
