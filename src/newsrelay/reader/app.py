@@ -6,12 +6,21 @@ is meant to be published only inside the tailnet (`tailscale serve`, never Funne
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import html
 import json
 import re
 import sqlite3
+import subprocess
+import tempfile
+import threading
 from datetime import date, timedelta
+from pathlib import Path
+from typing import Any
 
+import numpy as np
+import soundfile as sf
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
@@ -24,8 +33,12 @@ from ..config import Config
 from ..database import connect
 
 _PDF_NAME = re.compile(r"^briefing-\d{4}-\d{2}-\d{2}-[a-z0-9-]{1,40}\.pdf$")
+_KOKORO_MODEL = Path("/var/lib/newsrelay/models/kokoro/kokoro-v1.0.int8.onnx")
+_KOKORO_VOICES = Path("/var/lib/newsrelay/models/kokoro/voices-v1.0.bin")
+_kokoro: Any | None = None
+_kokoro_thread_lock = threading.Lock()
 HEADERS = {
-    "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
+    "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-src 'self'; "
     "img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
@@ -49,15 +62,60 @@ def _count(n: int) -> str:
     return f"{n} {'story' if n == 1 else 'stories'}"
 
 
+_LANGUAGES = """<option value="ar">العربية</option><option value="zh-CN">中文</option>
+<option value="nl">Nederlands</option><option value="en">English</option><option value="fr">Français</option>
+<option value="de">Deutsch</option><option value="el">Ελληνικά</option><option value="hi">हिन्दी</option>
+<option value="it">Italiano</option><option value="ja">日本語</option><option value="ko">한국어</option>
+<option value="pl">Polski</option><option value="pt">Português</option><option value="ru">Русский</option>
+<option value="es">Español</option><option value="tr">Türkçe</option><option value="uk">Українська</option>
+<option value="vi">Tiếng Việt</option><option value="af">Afrikaans</option><option value="sq">Shqip</option>
+<option value="am">አማርኛ</option><option value="hy">Հայերեն</option><option value="az">Azərbaycan</option>
+<option value="eu">Euskara</option><option value="bn">বাংলা</option><option value="bs">Bosanski</option>
+<option value="bg">Български</option><option value="ca">Català</option><option value="ceb">Cebuano</option>
+<option value="zh-TW">繁體中文</option><option value="hr">Hrvatski</option><option value="cs">Čeština</option>
+<option value="da">Dansk</option><option value="et">Eesti</option><option value="tl">Filipino</option>
+<option value="fi">Suomi</option><option value="gl">Galego</option><option value="ka">ქართული</option>
+<option value="gu">ગુજરાતી</option><option value="ht">Kreyòl Ayisyen</option><option value="ha">Hausa</option>
+<option value="haw">ʻŌlelo Hawaiʻi</option><option value="iw">עברית</option><option value="hu">Magyar</option>
+<option value="is">Íslenska</option><option value="ig">Igbo</option><option value="id">Bahasa Indonesia</option>
+<option value="ga">Gaeilge</option><option value="jv">Basa Jawa</option><option value="kn">ಕನ್ನಡ</option>
+<option value="kk">Қазақша</option><option value="km">ខ្មែរ</option><option value="rw">Ikinyarwanda</option>
+<option value="ku">Kurdî</option><option value="ky">Кыргызча</option><option value="lo">ລາວ</option>
+<option value="la">Latina</option><option value="lv">Latviešu</option><option value="lt">Lietuvių</option>
+<option value="lb">Lëtzebuergesch</option><option value="mk">Македонски</option><option value="mg">Malagasy</option>
+<option value="ms">Bahasa Melayu</option><option value="ml">മലയാളം</option><option value="mt">Malti</option>
+<option value="mi">Māori</option><option value="mr">मराठी</option><option value="mn">Монгол</option>
+<option value="my">မြန်မာ</option><option value="ne">नेपाली</option><option value="no">Norsk</option>
+<option value="or">ଓଡ଼ିଆ</option><option value="ps">پښتو</option><option value="fa">فارسی</option>
+<option value="pa">ਪੰਜਾਬੀ</option><option value="ro">Română</option><option value="sm">Gagana Samoa</option>
+<option value="gd">Gàidhlig</option><option value="sr">Српски</option><option value="st">Sesotho</option>
+<option value="sn">Shona</option><option value="sd">سنڌي</option><option value="si">සිංහල</option>
+<option value="sk">Slovenčina</option><option value="sl">Slovenščina</option><option value="so">Soomaali</option>
+<option value="su">Basa Sunda</option><option value="sw">Kiswahili</option><option value="sv">Svenska</option>
+<option value="tg">Тоҷикӣ</option><option value="ta">தமிழ்</option><option value="tt">Татарча</option>
+<option value="te">తెలుగు</option><option value="th">ไทย</option><option value="tk">Türkmençe</option>
+<option value="ur">اردو</option><option value="ug">ئۇيغۇرچە</option><option value="uz">Oʻzbek</option>
+<option value="cy">Cymraeg</option><option value="xh">isiXhosa</option><option value="yi">ייִדיש</option>
+<option value="yo">Yorùbá</option><option value="zu">isiZulu</option>"""
+
+
+def _translate_control() -> str:
+    return (
+        '<label class="translate">Translate <select id="translate-lang">' + _LANGUAGES +
+        '</select><button type="button" id="translate-go">Google Translate</button></label>'
+    )
+
+
 def _day_row(cfg: Config, d: date, n: int) -> str:
     weekday, _ = long_date(d)
-    pdfs = "".join(
-        f'<a class="ghost" href="/day/{d.isoformat()}/pdf/{p.name}">PDF</a>' for p in day_pdfs(cfg, d)
-    )
+    pdf_list = day_pdfs(cfg, d)
+    pdfs = (f'<a class="ghost" href="/day/{d.isoformat()}/pdf/{pdf_list[0].name}">Read PDF</a>'
+            if pdf_list else '<span class="ghost disabled">No PDF</span>')
     return (
         f'<li><div><div class="date">{weekday}, {d.day} {MONTHS[d.month - 1]}</div>'
         f'<div class="muted">{_count(n)}</div></div>'
-        f'<div class="actions"><a class="primary" href="/day/{d.isoformat()}">Read</a>{pdfs}</div></li>'
+        f'<div class="actions"><a class="primary" href="/day/{d.isoformat()}">Read</a>{pdfs}'
+        f'<a class="ghost" href="/day/{d.isoformat()}/audio.mp3">MP3</a></div></li>'
     )
 
 
@@ -109,7 +167,7 @@ def create_reader_app(cfg: Config) -> Starlette:
         finally:
             conn.close()
         body = _tree(cfg, listing) or '<p class="muted">No briefings yet.</p>'
-        return HTMLResponse(INDEX_HTML.replace("{{ITEMS}}", body), headers=HEADERS)
+        return HTMLResponse(INDEX_HTML.replace("{{ITEMS}}", body).replace("{{TRANSLATE}}", _translate_control()), headers=HEADERS)
 
     async def day_page(req: Request) -> Response:
         d = _day(req.path_params["day"])
@@ -134,8 +192,10 @@ def create_reader_app(cfg: Config) -> Starlette:
         ]
         pdfs = [f"/day/{d.isoformat()}/pdf/{p.name}" for p in day_pdfs(cfg, d)]
         payload = json.dumps({"day": d.isoformat(), "stories": data, "pdfs": pdfs}, ensure_ascii=False)
-        page = READER_HTML.replace("{{TITLE}}", html.escape(_title(d))).replace(
+        page = READER_HTML.replace("{{TITLE}}", html.escape(_title(d))).replace("{{DAY}}", d.isoformat()).replace(
             "{{DATA}}", payload.replace("</", "<\\/")
+        ).replace("{{TRANSLATE}}", _translate_control()).replace(
+            "{{PDF}}", f'<iframe class="pdf-viewer" src="{html.escape(pdfs[0])}#toolbar=1" title="Daily briefing PDF"></iframe>' if pdfs else '<p class="muted">No PDF available for this day.</p>'
         )
         return HTMLResponse(page, headers=HEADERS)
 
@@ -149,6 +209,44 @@ def create_reader_app(cfg: Config) -> Starlette:
             return PlainTextResponse("not found", status_code=404)
         return FileResponse(path, media_type="application/pdf", filename=name, headers=HEADERS)
 
+    audio_lock = asyncio.Lock()
+
+    async def audio(req: Request) -> Response:
+        d = _day(req.path_params["day"])
+        if d is None:
+            return PlainTextResponse("not found", status_code=404)
+        conn = db()
+        try:
+            stories = day_stories(conn, cfg, d)
+        finally:
+            conn.close()
+        story_arg = req.query_params.get("story")
+        selected = stories
+        if story_arg is not None:
+            if not story_arg.isdecimal() or int(story_arg) >= len(stories):
+                return PlainTextResponse("not found", status_code=404)
+            selected = [stories[int(story_arg)]]
+        paragraphs = [". ".join((s.headline, " ".join(word for _, word in reading_words(s, cfg.reader_country)))) for s in selected]
+        if not paragraphs:
+            return PlainTextResponse("no stories for this day", status_code=404)
+        text = "\n\n".join(paragraphs)
+        digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:20]
+        cache = Path("/var/lib/newsrelay/reader-audio")
+        cache.mkdir(parents=True, exist_ok=True)
+        scope = f"story-{story_arg}" if story_arg is not None else "day"
+        target = cache / f"{d.isoformat()}-{scope}-{digest}.mp3"
+        if not target.is_file():
+            async with audio_lock:
+                if not target.is_file():
+                    try:
+                        with tempfile.TemporaryDirectory(dir=cache) as tmp:
+                            staging = target.with_name(f"{target.stem}.tmp.mp3")
+                            await asyncio.to_thread(_synthesize_mp3, text, Path(tmp) / "day.wav", staging)
+                            staging.replace(target)
+                    except Exception:
+                        return PlainTextResponse("speech generation is temporarily unavailable", status_code=503)
+        return FileResponse(target, media_type="audio/mpeg", filename=f"briefing-{d.isoformat()}.mp3", headers=HEADERS)
+
     async def healthz(_req: Request) -> Response:
         return PlainTextResponse("ok")
 
@@ -157,9 +255,61 @@ def create_reader_app(cfg: Config) -> Starlette:
             Route("/", index),
             Route("/day/{day}", day_page),
             Route("/day/{day}/pdf/{name}", pdf),
+            Route("/day/{day}/audio.mp3", audio),
             Route("/healthz", healthz),
         ]
     )
+
+
+def _synthesize_mp3(text: str, wav_path: Path, mp3_path: Path) -> None:
+    """Create a cached, all-local Kokoro voice track and encode it as MP3."""
+    global _kokoro
+    with _kokoro_thread_lock:
+        if _kokoro is None:
+            from kokoro_onnx import Kokoro
+
+            if not _KOKORO_MODEL.is_file() or not _KOKORO_VOICES.is_file():
+                raise RuntimeError("Kokoro model files are not installed")
+            _kokoro = Kokoro(str(_KOKORO_MODEL), str(_KOKORO_VOICES))
+        with sf.SoundFile(wav_path, mode="w", samplerate=24000, channels=1, subtype="PCM_16") as wav:
+            for chunk in _speech_chunks(text):
+                samples, sample_rate = _kokoro.create(chunk, voice="af_heart", speed=1.0, lang="en-us")
+                if sample_rate != 24000:
+                    raise RuntimeError(f"Unexpected Kokoro sample rate: {sample_rate}")
+                wav.write(np.asarray(samples, dtype=np.float32))
+        subprocess.run(
+            ["ffmpeg", "-y", "-v", "error", "-i", str(wav_path), "-codec:a", "libmp3lame", "-q:a", "3", str(mp3_path)],
+            check=True,
+            timeout=900,
+        )
+
+
+def _speech_chunks(text: str, limit: int = 2800) -> list[str]:
+    chunks: list[str] = []
+    for paragraph in text.splitlines():
+        current = ""
+        for sentence in re.split(r"(?<=[.!?])\s+", paragraph):
+            words = sentence.split()
+            fragment = ""
+            for word in words:
+                if len(fragment) + len(word) + 1 > limit:
+                    if current:
+                        chunks.append(current)
+                        current = ""
+                    if fragment:
+                        chunks.append(fragment)
+                    fragment = word
+                else:
+                    fragment = f"{fragment} {word}".strip()
+            if fragment:
+                if current and len(current) + len(fragment) + 1 > limit:
+                    chunks.append(current)
+                    current = fragment
+                else:
+                    current = f"{current} {fragment}".strip()
+        if current:
+            chunks.append(current)
+    return chunks
 
 
 _BASE_CSS = """
@@ -181,6 +331,8 @@ INDEX_HTML = (
     + """
 ul{list-style:none;padding:0;margin:0}li{display:flex;justify-content:space-between;align-items:center;gap:12px;
 background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px}
+.translate{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin:10px 0 16px;color:var(--muted);font-size:.85rem}
+.translate select,.translate button{font:inherit;border:1px solid var(--line);border-radius:8px;padding:7px;background:var(--card);color:var(--ink)}
 details{margin:0 0 8px}summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;
 align-items:baseline;gap:12px;padding:10px 4px;border-bottom:1px solid var(--line)}
 summary::-webkit-details-marker{display:none}
@@ -196,7 +348,18 @@ summary span{margin-left:auto;font-size:.8rem;color:var(--muted);font-weight:400
 .actions a{text-decoration:none;padding:8px 14px;border-radius:999px;font-weight:600;font-size:.9rem}
 .primary{background:var(--accent);color:var(--bg)!important}.ghost{border:1px solid var(--line)}
 </style></head><body><main class="wrap"><div class="kicker">News Relay</div><h1>Daily Briefings</h1>
-<ul>{{ITEMS}}</ul></main></body></html>"""
+{{TRANSLATE}}
+<ul>{{ITEMS}}</ul></main><script>
+const translateLang = document.getElementById("translate-lang");
+const browserLang = (navigator.language || "en").split("-")[0].toLowerCase();
+if ([...translateLang.options].some(option => option.value.toLowerCase() === browserLang)) translateLang.value = browserLang;
+else translateLang.value = "en";
+document.getElementById("translate-go").onclick = () => {
+  const lang = translateLang.value;
+  const target = "https://translate.google.com/translate?sl=auto&tl=" + encodeURIComponent(lang) + "&u=" + encodeURIComponent(location.href);
+  window.open(target, "_blank", "noopener");
+};
+</script></body></html>"""
 )
 
 READER_HTML = (
@@ -248,9 +411,13 @@ border-radius:999px;padding:4px 10px;cursor:pointer}
 .opts{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;font-size:.85rem;color:var(--muted)}
 .hint{font-size:.78rem;color:var(--muted);margin-top:14px}
 .pdfs a{margin-left:10px}
+.read-aloud{margin:14px 0 0;color:var(--muted);font-size:.9rem}
+.pdf-viewer{width:100%;height:min(78vh,1000px);min-height:560px;border:1px solid var(--line);border-radius:12px;background:var(--card);margin-top:12px}
+.pdf-section{margin-top:24px}.pdf-section h2{font-family:"Iowan Old Style","Palatino Linotype",Georgia,serif;font-size:1.35rem}
 </style></head><body><main class="wrap">
 <div class="top"><div><div class="kicker">Speed reading</div><h1>{{TITLE}}</h1></div>
-<div><a href="/">All days</a><span class="pdfs" id="pdfs"></span></div></div>
+<div><a href="/">All days</a><span class="pdfs" id="pdfs"></span><a href="/day/{{DAY}}/audio.mp3" download>MP3</a></div></div>
+{{TRANSLATE}}
 <div class="stories" id="stories"></div>
 <section class="stage" id="stage" aria-live="off">
 <div class="meta" id="meta"></div><div class="headline" id="headline"></div>
@@ -267,8 +434,10 @@ border-radius:999px;padding:4px 10px;cursor:pointer}
 <input type="number" id="wpmn" min="100" max="2000" step="10" aria-label="Words per minute"></div>
 <div class="presets" id="presets"></div>
 <div class="opts"><label><input type="checkbox" id="ctx" checked> Show neighbouring words</label>
-<label><input type="checkbox" id="pause" checked> Pause longer at punctuation</label></div></section>
+<label><input type="checkbox" id="pause" checked> Pause longer at punctuation</label>
+<label class="read-aloud"><input type="checkbox" id="speak"> Read this article aloud</label></div></section>
 <p class="hint">Space: play/pause · Left/Right: 10 words · Up/Down: speed ±25 · Tap the word to play or pause.</p>
+<section class="pdf-section"><h2>Read the PDF</h2>{{PDF}}</section>
 </main>
 <script>
 const DATA = {{DATA}};
@@ -279,6 +448,8 @@ DATA.stories.forEach((s, si) => { starts.push(tokens.length); s.words.forEach(([
 let i = Math.min(+(store("pos:" + DATA.day) || 0), Math.max(0, tokens.length - 1));
 let wpm = Math.max(100, Math.min(2000, +(store("wpm") || 350)));
 let timer = null;
+let speakingStory = -1;
+let articleAudio = null;
 
 function pivotIndex(w) { const n = w.replace(/[^\\p{L}\\p{N}]/gu, "").length; return n <= 1 ? 0 : n <= 5 ? 1 : n <= 9 ? 2 : n <= 13 ? 3 : 4; }
 function splitWord(w) {
@@ -314,8 +485,22 @@ function render() {
   $("pos").textContent = "Story " + (t.si + 1) + " of " + DATA.stories.length + " · word " + (i + 1) + " of " + tokens.length;
   const mins = (tokens.length - i) / wpm; $("left").textContent = mins < 1 ? Math.ceil(mins * 60) + " s left" : Math.ceil(mins) + " min left";
   document.querySelectorAll(".stories button").forEach((el, k) => el.classList.toggle("on", k === t.si));
+  if ($("speak").checked && speakingStory !== t.si) speakArticle(t.si);
   store("pos:" + DATA.day, i);
 }
+function speakArticle(si) {
+  if (articleAudio) { articleAudio.pause(); articleAudio = null; }
+  const story = DATA.stories[si];
+  const words = story.words.length + story.headline.trim().split(/\\s+/).length;
+  const player = new Audio("/day/" + DATA.day + "/audio.mp3?story=" + si);
+  player.onloadedmetadata = () => { player.playbackRate = speechRate(player.duration, words); };
+  player.onended = () => { if (articleAudio === player) { articleAudio = null; speakingStory = -1; $("speak").checked = false; } };
+  player.onerror = () => { if (articleAudio === player) { articleAudio = null; speakingStory = -1; $("speak").checked = false; } };
+  articleAudio = player;
+  speakingStory = si;
+  player.play().catch(() => { if (articleAudio === player) { articleAudio = null; speakingStory = -1; $("speak").checked = false; } });
+}
+function speechRate(duration, words) { return Math.max(0.5, Math.min(12, wpm * duration / (words * 60))); }
 function step() {
   if (i >= tokens.length - 1) { stop(); return; }
   i++; render(); timer = setTimeout(step, delay(tokens[i]));
@@ -324,7 +509,7 @@ function play() { if (!tokens.length) return; if (i >= tokens.length - 1) i = 0;
 function stop() { clearTimeout(timer); timer = null; $("play").textContent = "Play"; }
 function toggle() { timer ? stop() : play(); }
 function jump(n) { const run = !!timer; stop(); i = Math.max(0, Math.min(tokens.length - 1, i + n)); render(); if (run) play(); }
-function setWpm(v) { wpm = Math.max(100, Math.min(2000, Math.round(+v / 10) * 10 || 350)); $("wpm").value = wpm; $("wpmn").value = wpm; store("wpm", wpm); render(); }
+function setWpm(v) { wpm = Math.max(100, Math.min(2000, Math.round(+v / 10) * 10 || 350)); $("wpm").value = wpm; $("wpmn").value = wpm; store("wpm", wpm); render(); if ($("speak").checked && tokens.length && articleAudio) { const s = DATA.stories[tokens[i].si]; const count = s.words.length + s.headline.trim().split(/\\s+/).length; if (Number.isFinite(articleAudio.duration)) articleAudio.playbackRate = speechRate(articleAudio.duration, count); } }
 
 DATA.stories.forEach((s, k) => { const b = document.createElement("button"); b.innerHTML = "<b>" + String(k + 1).padStart(2, "0") + "</b>"; b.appendChild(document.createTextNode(s.headline)); b.onclick = () => { const run = !!timer; stop(); i = starts[k]; render(); if (run) play(); }; $("stories").appendChild(b); });
 [200, 300, 400, 500, 700, 1000, 1500, 2000].forEach(v => { const b = document.createElement("button"); b.textContent = v; b.onclick = () => setWpm(v); $("presets").appendChild(b); });
@@ -332,6 +517,16 @@ DATA.pdfs.forEach((u, k) => { const a = document.createElement("a"); a.href = u;
 $("wpm").oninput = e => setWpm(e.target.value); $("wpmn").onchange = e => setWpm(e.target.value);
 $("play").onclick = toggle; $("back").onclick = () => jump(-10); $("fwd").onclick = () => jump(10);
 $("stage").onclick = toggle; $("ctx").onchange = render;
+$("speak").onchange = () => { if ($("speak").checked && tokens.length) speakArticle(tokens[i].si); else { if (articleAudio) articleAudio.pause(); articleAudio = null; speakingStory = -1; } };
+document.getElementById("translate-go").onclick = () => {
+  const lang = document.getElementById("translate-lang").value;
+  const target = "https://translate.google.com/translate?sl=auto&tl=" + encodeURIComponent(lang) + "&u=" + encodeURIComponent(location.href);
+  window.open(target, "_blank", "noopener");
+};
+const translateLang = document.getElementById("translate-lang");
+const browserLang = (navigator.language || "en").split("-")[0].toLowerCase();
+if ([...translateLang.options].some(option => option.value.toLowerCase() === browserLang)) translateLang.value = browserLang;
+else translateLang.value = "en";
 document.addEventListener("keydown", e => {
   if (e.target.tagName === "INPUT" && e.target.type === "number") return;
   if (e.code === "Space") { e.preventDefault(); toggle(); }

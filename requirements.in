@@ -11,3 +11,6 @@ rapidfuzz==3.14.6
 fpdf2==2.8.9
 # Discord Gateway connection for the bot's online status (newsrelay-presence only).
 websockets==17.1
+# Local, CPU-only Kokoro-82M synthesis for downloadable daily MP3s.
+kokoro-onnx==0.6.1
+soundfile==0.13.1
