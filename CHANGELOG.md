@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.11.0 — 2026-10-07
+
+- Reader index: Read, Read PDF, and full-day MP3 actions for each briefing day.
+- Reader: embeds the day's PDF below the speed-reading controls; article checkbox speaks the selected
+  story with Kokoro at the current reading speed.
+- Daily MP3s are generated and cached locally on the Raspberry Pi with the CPU-only Kokoro-82M
+  int8 model and the warm `af_heart` English voice; no story text is sent to a TTS provider.
+- Reader pages offer Google Translate language selection. This opens the public page in Google
+  Translate; the old embedded Website Translator widget was retired by Google.
+- Kokoro model files are installed on 64-bit Raspberry Pi OS; reader memory limit raised for inference.
+
 ## 1.10.1 — 2026-10-07
 
 - Speed reader: smaller main word (max 2.4rem instead of 3.6rem); neighbouring words relatively larger.
