@@ -185,6 +185,7 @@ def test_full_flow_oauth_mcp_outbox_fake_discord(live, caplog):
     assert set(tools) == {
         "newsrelay_begin_run",
         "newsrelay_match_candidates",
+        "newsrelay_stage_stories",
         "newsrelay_publish_digest",
         "newsrelay_complete_noop",
         "newsrelay_publish_status",

@@ -23,7 +23,7 @@ from .dedup.normalize import canonical_url, normalize_text, slugify, url_domain
 from .logutil import log
 from .publishing import outbox
 from .publishing.formatter import briefing_payload, build_payloads
-from .schemas import BeginRunInput, MatchInput, NoopInput, PublishInput, StatusInput, Story
+from .schemas import BeginRunInput, MatchInput, NoopInput, PublishInput, StageInput, StatusInput, Story
 from .sources import load_allowlist
 
 logger = logging.getLogger("newsrelay.service")
@@ -208,7 +208,99 @@ def match_candidates(conn: sqlite3.Connection, cfg: Config, inp: MatchInput) -> 
 
 
 def _request_hash(inp: PublishInput) -> str:
-    return hashlib.sha256(inp.model_dump_json().encode()).hexdigest()
+    # The stories decide identity: a run finalised by ChatGPT and the same run auto-published by the
+    # worker (with a slightly different research_through) are the same publication.
+    stories = sorted(inp.stories, key=lambda s: s.candidate_id)
+    return hashlib.sha256(json.dumps([s.model_dump(mode="json") for s in stories]).encode()).hexdigest()
+
+
+def _staged(conn: sqlite3.Connection, run_key: str) -> list[Story]:
+    return [
+        Story.model_validate_json(r[0])
+        for r in conn.execute(
+            "SELECT story_json FROM staged_stories WHERE run_key = ? ORDER BY created_at, candidate_id",
+            (run_key,),
+        )
+    ]
+
+
+def stage_stories(conn: sqlite3.Connection, cfg: Config, inp: StageInput) -> dict[str, Any]:
+    """Accept a small batch of validated stories for a run; nothing is posted yet."""
+    check_disk(cfg.db_path, cfg.min_free_disk_mb)
+    ids = [s.candidate_id for s in inp.stories]
+    if len(set(ids)) != len(ids):
+        raise RelayError("candidate_id values must be unique within a request")
+    staged: list[str] = []
+    rejected: list[dict[str, Any]] = []
+    now_s = timeutil.now_iso()
+    with tx(conn):
+        run = _find_run(conn, inp.run_key)
+        if run is not None:
+            raise RelayError(f"run {inp.run_key} is already {run['status']}; nothing was staged")
+        for st in inp.stories:
+            bad = _disallowed(cfg, [s.url for s in st.sources])
+            if bad:
+                rejected.append(
+                    {"candidate_id": st.candidate_id, "reason": f"SOURCE_NOT_ALLOWED: {', '.join(bad)}"}
+                )
+                continue
+            conn.execute(
+                "INSERT INTO staged_stories(run_key, candidate_id, research_through, story_json, created_at) "
+                "VALUES (?, ?, ?, ?, ?) ON CONFLICT(run_key, candidate_id) DO UPDATE SET "
+                "research_through = excluded.research_through, story_json = excluded.story_json, "
+                "created_at = excluded.created_at",
+                (
+                    inp.run_key,
+                    st.candidate_id,
+                    timeutil.to_iso(inp.research_through),
+                    st.model_dump_json(),
+                    now_s,
+                ),
+            )
+            staged.append(st.candidate_id)
+        total = conn.execute(
+            "SELECT count(*) FROM staged_stories WHERE run_key = ?", (inp.run_key,)
+        ).fetchone()[0]
+    log(logger, logging.INFO, "stage_stories", run_key=inp.run_key, staged=len(staged), total=total)
+    return {
+        "run_key": inp.run_key,
+        "staged": staged,
+        "rejected": rejected,
+        "staged_total": total,
+        "autopublish_after_minutes": cfg.stage_autopublish_minutes,
+    }
+
+
+def autopublish_staged(conn: sqlite3.Connection, cfg: Config) -> int:
+    """Publish staged runs whose final publish call never arrived. Returns runs published."""
+    cutoff = timeutil.iso_plus(-cfg.stage_autopublish_minutes * 60)
+    rows = conn.execute(
+        "SELECT run_key, MAX(created_at) AS last, MAX(research_through) AS through FROM staged_stories "
+        "GROUP BY run_key HAVING last <= ?",
+        (cutoff,),
+    ).fetchall()
+    done = 0
+    for r in rows:
+        if _find_run(conn, r["run_key"]) is not None:
+            with tx(conn):
+                conn.execute("DELETE FROM staged_stories WHERE run_key = ?", (r["run_key"],))
+            continue
+        res = publish_digest(
+            conn,
+            cfg,
+            PublishInput.model_validate(
+                {"run_key": r["run_key"], "research_through": r["through"], "stories": []}
+            ),
+        )
+        log(
+            logger,
+            logging.WARNING,
+            "staged run auto-published (final publish call never arrived)",
+            run_key=r["run_key"],
+            publication_id=res.get("publication_id"),
+        )
+        done += 1
+    return done
 
 
 def _unique_topic_key(conn: sqlite3.Connection, base: str) -> str:
@@ -432,6 +524,21 @@ def publish_digest(conn: sqlite3.Connection, cfg: Config, inp: PublishInput) -> 
     ids = [s.candidate_id for s in inp.stories]
     if len(set(ids)) != len(ids):
         raise RelayError("candidate_id values must be unique within a publish request")
+    staged = _staged(conn, inp.run_key)
+    if staged:
+        merged = {s.candidate_id: s for s in staged}
+        merged.update({s.candidate_id: s for s in inp.stories})  # a story sent again now wins
+        stories = sorted(merged.values(), key=lambda s: -s.importance)
+        inp = PublishInput(run_key=inp.run_key, research_through=inp.research_through, stories=stories)
+    if not inp.stories:
+        run = _find_run(conn, inp.run_key)
+        if run is None:
+            raise RelayError(
+                "nothing to publish: no stories given or staged for this run; use newsrelay_complete_noop"
+            )
+        status = publish_status(conn, StatusInput(run_key=inp.run_key))
+        status["idempotent_replay"] = True
+        return status
     req_hash = _request_hash(inp)
     accepted: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
@@ -481,6 +588,7 @@ def publish_digest(conn: sqlite3.Connection, cfg: Config, inp: PublishInput) -> 
                 if rej:
                     rejected.append(rej)
             _enqueue(conn, cfg, inp.run_key, batch_id, published, queue)
+            conn.execute("DELETE FROM staged_stories WHERE run_key = ?", (inp.run_key,))
             conn.execute(
                 "UPDATE publication_batches SET story_count = ? WHERE id = ?", (len(accepted), batch_id)
             )
