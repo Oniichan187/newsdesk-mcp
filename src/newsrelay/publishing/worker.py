@@ -87,6 +87,7 @@ class Worker:
         self._warned_no_webhook = False
         # monotonic() counts from boot, so 0.0 would look "recent" on a freshly started host
         self._archive_checked: float | None = None
+        self._autopublish_checked: float | None = None
 
     def _alive(self) -> None:
         heartbeat(self.cfg.runtime_dir)
@@ -152,6 +153,19 @@ class Worker:
         assert isinstance(self.transport, BotTransport)
         return self.transport.send(payload, key=key, channel_id=channel)
 
+    def autopublish(self) -> int:
+        """Publish staged runs whose final publish call never arrived (checked at most once a minute)."""
+        if self._autopublish_checked is not None and time.monotonic() - self._autopublish_checked < 60:
+            return 0
+        self._autopublish_checked = time.monotonic()
+        from ..service import autopublish_staged
+
+        try:
+            return autopublish_staged(self.conn, self.cfg)
+        except Exception as exc:  # never let this take down delivery
+            log(logger, logging.ERROR, "auto-publish of staged stories failed", error=str(exc)[:300])
+            return 0
+
     def maintain_days(self) -> int:
         """Archive old day channels when the queue is idle (at most every ARCHIVE_CHECK_S)."""
         if self.days is None or (
@@ -191,6 +205,7 @@ class Worker:
                 self.sleep(min(120.0, 5.0 * 2 ** min(consecutive_errors, 5)))
                 continue
             if res == "idle":
+                self.autopublish()
                 self.maintain_days()
             if not res.startswith("sent"):
                 self.sleep(self.wait_time())

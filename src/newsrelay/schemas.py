@@ -14,6 +14,7 @@ from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstra
 
 MAX_CANDIDATES = 40
 MAX_STORIES = 20
+MAX_STAGE = 5
 MAX_FACTS = 8
 MAX_SOURCES = 6
 MAX_ENTITIES = 12
@@ -262,7 +263,14 @@ class Story(Strict):
 class PublishInput(Strict):
     run_key: RunKey
     research_through: AwareDatetime
-    stories: list[Story] = Field(min_length=1, max_length=MAX_STORIES)
+    # Optional: stories handed over earlier with newsrelay_stage_stories are published as well.
+    stories: list[Story] = Field(default_factory=list, max_length=MAX_STORIES)
+
+
+class StageInput(Strict):
+    run_key: RunKey
+    research_through: AwareDatetime
+    stories: list[Story] = Field(min_length=1, max_length=MAX_STAGE)
 
 
 class NoopInput(Strict):
