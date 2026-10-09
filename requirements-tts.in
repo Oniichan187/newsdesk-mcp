@@ -1,0 +1,5 @@
+# Spoken briefings only (separate venv /opt/newsrelay/tts/venv; see scripts/setup-tts.sh).
+# Lock: scripts/lock.sh -> requirements-tts.lock
+-c requirements.lock
+kokoro-onnx==0.6.1
+lameenc==1.8.4

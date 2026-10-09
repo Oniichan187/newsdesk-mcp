@@ -92,9 +92,10 @@ When a simple RSS bot is enough for you, use one — it is easier to set up. Use
   safe upgrades with automatic rollback.
 - **Only the sources you allow** — an enforced allowlist of outlets; language, country and topics of
   the posts are set with one command.
-- **Made for reading** — every briefing also arrives as a calm, phone-sized PDF with Bionic Reading.
-  The reader shows each day word by word, embeds its PDF, and creates a full-day MP3 locally on the Pi
-  with Kokoro-82M's CPU voice. Google Translate can open the public page in 100+ languages.
+- **Made for reading and listening** — every briefing also arrives as a calm, phone-sized PDF with
+  Bionic Reading; a web reader shows each day word by word (RSVP, 100–2000 words per minute), reads it
+  aloud in sync with a natural voice generated on the Pi (Kokoro), offers the day as MP3 and
+  translates the page into any language.
 
 ## 🧭 How it works
 
@@ -258,5 +259,6 @@ see [CONTRIBUTING.md](CONTRIBUTING.md).
 ## 📄 License
 
 [MIT](LICENSE). The bundled IBM Plex Serif fonts are under the
-[SIL Open Font License](src/newsrelay/briefing/fonts/OFL.txt). News content belongs to the respective publishers; the bot posts short summaries with
+[SIL Open Font License](src/newsrelay/briefing/fonts/OFL.txt); the optional Kokoro voice model
+(downloaded by `scripts/setup-tts.sh`) is Apache-2.0. News content belongs to the respective publishers; the bot posts short summaries with
 links to the original articles.

@@ -11,10 +11,12 @@ TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 python3 -m venv "$TMP/venv"
 "$TMP/venv/bin/pip" install -q --upgrade pip "pip-tools==7.6.1"
-rm -f requirements.lock requirements-dev.lock
+rm -f requirements.lock requirements-dev.lock requirements-tts.lock
 "$TMP/venv/bin/pip-compile" -q --generate-hashes --allow-unsafe --strip-extras --index-url https://pypi.org/simple --no-emit-index-url \
     --output-file requirements.lock requirements.in
 "$TMP/venv/bin/pip-compile" -q --generate-hashes --allow-unsafe --strip-extras --index-url https://pypi.org/simple --no-emit-index-url \
     --output-file requirements-dev.lock requirements-dev.in
+"$TMP/venv/bin/pip-compile" -q --generate-hashes --allow-unsafe --strip-extras --index-url https://pypi.org/simple --no-emit-index-url \
+    --output-file requirements-tts.lock requirements-tts.in
 rm -f requirements-dev.txt
 echo "locks written: $(grep -c '==' requirements.lock) runtime / $(grep -c '==' requirements-dev.lock) dev pins"

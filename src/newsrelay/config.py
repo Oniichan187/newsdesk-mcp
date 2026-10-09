@@ -72,6 +72,12 @@ class Config:
     # Public reader via Cloudflare quick tunnel (newsrelay-tunnel.service): when reader_url is empty,
     # the current https://<random>.trycloudflare.com address is read from cloudflared's metrics port.
     reader_tunnel_metrics: str = "127.0.0.1:20241"
+    # Spoken briefings (newsrelay-audio.timer, set up by scripts/setup-tts.sh): Kokoro voice on the Pi.
+    tts_model_dir: Path = Path("/opt/newsrelay/tts/models")
+    tts_voice: str = "af_heart"
+    tts_lang: str = "en-us"
+    tts_speed: float = 1.0
+    tts_threads: int = 3
     # Country the readers live in; labels the "Impact <country>" line. Keep it equal to the
     # --country the task prompt was built with.
     reader_country: str = "Austria"
@@ -108,7 +114,15 @@ class Config:
 
 # Keys accepted (and ignored) for compatibility with configs written by older versions.
 DEPRECATED_KEYS = {"max_lookback_days", "stale_run_hours", "max_pending_age_hours", "discord_daily_category"}
-_PATH_FIELDS = {"db_path", "backup_dir", "runtime_dir", "secret_dir_override", "sources_file", "briefing_dir"}
+_PATH_FIELDS = {
+    "db_path",
+    "backup_dir",
+    "runtime_dir",
+    "secret_dir_override",
+    "sources_file",
+    "briefing_dir",
+    "tts_model_dir",
+}
 _TUPLE_FIELDS = {"extra_allowed_hosts", "allowed_redirect_prefixes"}
 
 

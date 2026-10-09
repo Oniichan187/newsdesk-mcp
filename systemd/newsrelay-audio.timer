@@ -1,0 +1,10 @@
+[Unit]
+Description=Render spoken briefings shortly after publishing
+
+[Timer]
+OnBootSec=5min
+OnUnitInactiveSec=10min
+Persistent=false
+
+[Install]
+WantedBy=timers.target
