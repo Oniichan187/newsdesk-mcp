@@ -1,31 +1,25 @@
-"""RSVP speed reader: one page per day, 100–2000 words per minute, plus the day's PDFs.
+"""Public reader: daily briefings as speed reading (RSVP), spoken audio and the PDF.
 
-Read-only: every request opens the database in read-only mode. The service listens on localhost and
-is meant to be published only inside the tailnet (`tailscale serve`, never Funnel).
+Read-only: every request opens the database in read-only mode; files are served only from the
+briefing directory and only under strict name patterns. The service listens on localhost; it is
+published through Cloudflare (or inside the tailnet), never together with the MCP backend.
 """
 
 from __future__ import annotations
 
-import asyncio
-import hashlib
 import html
 import json
 import re
 import sqlite3
-import subprocess
-import tempfile
-import threading
 from datetime import date, timedelta
-from pathlib import Path
 from typing import Any
 
-import numpy as np
-import soundfile as sf
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
 from starlette.routing import Route
 
+from ..audio.build import audio_dir, load_timing
 from ..briefing.pdf import MONTHS, long_date
 from ..briefing.store import day_pdfs, day_stories, days
 from ..briefing.text import reading_words
@@ -33,17 +27,31 @@ from ..config import Config
 from ..database import connect
 
 _PDF_NAME = re.compile(r"^briefing-\d{4}-\d{2}-\d{2}-[a-z0-9-]{1,40}\.pdf$")
-_KOKORO_MODEL = Path("/var/lib/newsrelay/models/kokoro/kokoro-v1.0.int8.onnx")
-_KOKORO_VOICES = Path("/var/lib/newsrelay/models/kokoro/voices-v1.0.bin")
-_kokoro: Any | None = None
-_kokoro_thread_lock = threading.Lock()
+_MP3_NAME = re.compile(r"^(day|story-\d{2})\.mp3$")
+PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174"
+PDFJS_SRI = "sha512-q+4liFwdPC/bNdhUpZx6aXDx/h77yEQtn4I1slHydcbZK34nLaR3cAeYSJshoxIOq3mjEf7xJE8YWIUHMn+oCQ=="
+PDFJS_WORKER_SRI = (
+    "sha512-BbrZ76UNZq5BhH7LL7pn9A4TKQpQeNCHOo65/akfelcIBbcVvYWOFQKPXIrykE3qZxYjmDX573oa4Ywsc7rpTw=="
+)
+_GOOGLE = "https://translate.google.com https://translate.googleapis.com https://translate-pa.googleapis.com"
 HEADERS = {
-    "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-src 'self'; "
-    "img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    # Google Website Translator (widget) and pdf.js (cdnjs, SRI-pinned) are the only third parties.
+    "Content-Security-Policy": (
+        "default-src 'none'; "
+        f"script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://www.gstatic.com {_GOOGLE}; "
+        "style-src 'unsafe-inline' https://www.gstatic.com https://translate.googleapis.com; "
+        f"img-src 'self' data: https://www.gstatic.com https://www.google.com {_GOOGLE}; "
+        f"connect-src 'self' https://cdnjs.cloudflare.com {_GOOGLE}; "
+        "font-src https://fonts.gstatic.com; "
+        "frame-src https://translate.google.com https://translate.googleapis.com; "
+        "worker-src blob:; media-src 'self'; "
+        "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    ),
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
     "Cache-Control": "no-store",
 }
+FILE_HEADERS = {"X-Content-Type-Options": "nosniff", "Cache-Control": "public, max-age=3600"}
 
 
 def _day(value: str) -> date | None:
@@ -62,60 +70,40 @@ def _count(n: int) -> str:
     return f"{n} {'story' if n == 1 else 'stories'}"
 
 
-_LANGUAGES = """<option value="ar">العربية</option><option value="zh-CN">中文</option>
-<option value="nl">Nederlands</option><option value="en">English</option><option value="fr">Français</option>
-<option value="de">Deutsch</option><option value="el">Ελληνικά</option><option value="hi">हिन्दी</option>
-<option value="it">Italiano</option><option value="ja">日本語</option><option value="ko">한국어</option>
-<option value="pl">Polski</option><option value="pt">Português</option><option value="ru">Русский</option>
-<option value="es">Español</option><option value="tr">Türkçe</option><option value="uk">Українська</option>
-<option value="vi">Tiếng Việt</option><option value="af">Afrikaans</option><option value="sq">Shqip</option>
-<option value="am">አማርኛ</option><option value="hy">Հայերեն</option><option value="az">Azərbaycan</option>
-<option value="eu">Euskara</option><option value="bn">বাংলা</option><option value="bs">Bosanski</option>
-<option value="bg">Български</option><option value="ca">Català</option><option value="ceb">Cebuano</option>
-<option value="zh-TW">繁體中文</option><option value="hr">Hrvatski</option><option value="cs">Čeština</option>
-<option value="da">Dansk</option><option value="et">Eesti</option><option value="tl">Filipino</option>
-<option value="fi">Suomi</option><option value="gl">Galego</option><option value="ka">ქართული</option>
-<option value="gu">ગુજરાતી</option><option value="ht">Kreyòl Ayisyen</option><option value="ha">Hausa</option>
-<option value="haw">ʻŌlelo Hawaiʻi</option><option value="iw">עברית</option><option value="hu">Magyar</option>
-<option value="is">Íslenska</option><option value="ig">Igbo</option><option value="id">Bahasa Indonesia</option>
-<option value="ga">Gaeilge</option><option value="jv">Basa Jawa</option><option value="kn">ಕನ್ನಡ</option>
-<option value="kk">Қазақша</option><option value="km">ខ្មែរ</option><option value="rw">Ikinyarwanda</option>
-<option value="ku">Kurdî</option><option value="ky">Кыргызча</option><option value="lo">ລາວ</option>
-<option value="la">Latina</option><option value="lv">Latviešu</option><option value="lt">Lietuvių</option>
-<option value="lb">Lëtzebuergesch</option><option value="mk">Македонски</option><option value="mg">Malagasy</option>
-<option value="ms">Bahasa Melayu</option><option value="ml">മലയാളം</option><option value="mt">Malti</option>
-<option value="mi">Māori</option><option value="mr">मराठी</option><option value="mn">Монгол</option>
-<option value="my">မြန်မာ</option><option value="ne">नेपाली</option><option value="no">Norsk</option>
-<option value="or">ଓଡ଼ିଆ</option><option value="ps">پښتو</option><option value="fa">فارسی</option>
-<option value="pa">ਪੰਜਾਬੀ</option><option value="ro">Română</option><option value="sm">Gagana Samoa</option>
-<option value="gd">Gàidhlig</option><option value="sr">Српски</option><option value="st">Sesotho</option>
-<option value="sn">Shona</option><option value="sd">سنڌي</option><option value="si">සිංහල</option>
-<option value="sk">Slovenčina</option><option value="sl">Slovenščina</option><option value="so">Soomaali</option>
-<option value="su">Basa Sunda</option><option value="sw">Kiswahili</option><option value="sv">Svenska</option>
-<option value="tg">Тоҷикӣ</option><option value="ta">தமிழ்</option><option value="tt">Татарча</option>
-<option value="te">తెలుగు</option><option value="th">ไทย</option><option value="tk">Türkmençe</option>
-<option value="ur">اردو</option><option value="ug">ئۇيغۇرچە</option><option value="uz">Oʻzbek</option>
-<option value="cy">Cymraeg</option><option value="xh">isiXhosa</option><option value="yi">ייִדיש</option>
-<option value="yo">Yorùbá</option><option value="zu">isiZulu</option>"""
-
-
-def _translate_control() -> str:
-    return (
-        '<label class="translate">Translate <select id="translate-lang">' + _LANGUAGES +
-        '</select><button type="button" id="translate-go">Google Translate</button></label>'
-    )
+def _audio(cfg: Config, d: date) -> dict[str, Any] | None:
+    """Timing data with URLs for the reader, or None while the audio is not rendered yet."""
+    t = load_timing(cfg, d)
+    if not t or not (audio_dir(cfg, d) / "day.mp3").is_file():
+        return None
+    base = f"/day/{d.isoformat()}/audio/"
+    return {
+        "day": base + "day.mp3",
+        "stories": [
+            {
+                "url": base + s["file"],
+                "duration": s["duration"],
+                "words": s["words"],
+                "segments": s["segments"],
+            }
+            for s in t.get("stories", [])
+        ],
+    }
 
 
 def _day_row(cfg: Config, d: date, n: int) -> str:
     weekday, _ = long_date(d)
-    pdf_list = day_pdfs(cfg, d)
-    pdfs = (f'<a class="ghost" href="/day/{d.isoformat()}/pdf/{pdf_list[0].name}">Read PDF</a>'
-            if pdf_list else '<span class="ghost disabled">No PDF</span>')
+    iso = d.isoformat()
+    pdfs = "".join(f'<a class="ghost" href="/day/{iso}/pdf/{p.name}">PDF</a>' for p in day_pdfs(cfg, d))
+    if not pdfs:
+        pdfs = '<span class="ghost off" title="No PDF for this day">PDF</span>'
+    if (audio_dir(cfg, d) / "day.mp3").is_file():
+        mp3 = f'<a class="ghost" href="/day/{iso}/audio/day.mp3" download="briefing-{iso}.mp3">MP3</a>'
+    else:
+        mp3 = '<span class="ghost off" title="The spoken version is being prepared">MP3</span>'
     return (
         f'<li><div><div class="date">{weekday}, {d.day} {MONTHS[d.month - 1]}</div>'
         f'<div class="muted">{_count(n)}</div></div>'
-        f'<div class="actions"><a class="primary" href="/day/{d.isoformat()}">Read</a>{pdfs}'
-        f'<a class="ghost" href="/day/{d.isoformat()}/audio.mp3">MP3</a></div></li>'
+        f'<div class="actions"><a class="primary" href="/day/{iso}">Read</a>{pdfs}{mp3}</div></li>'
     )
 
 
@@ -167,7 +155,7 @@ def create_reader_app(cfg: Config) -> Starlette:
         finally:
             conn.close()
         body = _tree(cfg, listing) or '<p class="muted">No briefings yet.</p>'
-        return HTMLResponse(INDEX_HTML.replace("{{ITEMS}}", body).replace("{{TRANSLATE}}", _translate_control()), headers=HEADERS)
+        return HTMLResponse(_page(INDEX_HTML).replace("{{ITEMS}}", body), headers=HEADERS)
 
     async def day_page(req: Request) -> Response:
         d = _day(req.path_params["day"])
@@ -191,11 +179,16 @@ def create_reader_app(cfg: Config) -> Starlette:
             for s in stories
         ]
         pdfs = [f"/day/{d.isoformat()}/pdf/{p.name}" for p in day_pdfs(cfg, d)]
-        payload = json.dumps({"day": d.isoformat(), "stories": data, "pdfs": pdfs}, ensure_ascii=False)
-        page = READER_HTML.replace("{{TITLE}}", html.escape(_title(d))).replace("{{DAY}}", d.isoformat()).replace(
-            "{{DATA}}", payload.replace("</", "<\\/")
-        ).replace("{{TRANSLATE}}", _translate_control()).replace(
-            "{{PDF}}", f'<iframe class="pdf-viewer" src="{html.escape(pdfs[0])}#toolbar=1" title="Daily briefing PDF"></iframe>' if pdfs else '<p class="muted">No PDF available for this day.</p>'
+        audio = _audio(cfg, d)
+        if audio and len(audio["stories"]) != len(data):
+            audio = None  # stories changed since the audio was rendered; a new render is pending
+        payload = json.dumps(
+            {"day": d.isoformat(), "stories": data, "pdfs": pdfs, "audio": audio}, ensure_ascii=False
+        )
+        page = (
+            _page(READER_HTML)
+            .replace("{{TITLE}}", html.escape(_title(d)))
+            .replace("{{DATA}}", payload.replace("</", "<\\/"))
         )
         return HTMLResponse(page, headers=HEADERS)
 
@@ -207,45 +200,26 @@ def create_reader_app(cfg: Config) -> Starlette:
         path = cfg.briefing_dir / d.isoformat() / name
         if not path.is_file():
             return PlainTextResponse("not found", status_code=404)
-        return FileResponse(path, media_type="application/pdf", filename=name, headers=HEADERS)
+        return FileResponse(path, media_type="application/pdf", filename=name, headers=FILE_HEADERS)
 
-    audio_lock = asyncio.Lock()
-
-    async def audio(req: Request) -> Response:
+    async def mp3(req: Request) -> Response:
         d = _day(req.path_params["day"])
-        if d is None:
+        name = req.path_params["name"]
+        if d is None or not _MP3_NAME.match(name):
             return PlainTextResponse("not found", status_code=404)
-        conn = db()
-        try:
-            stories = day_stories(conn, cfg, d)
-        finally:
-            conn.close()
-        story_arg = req.query_params.get("story")
-        selected = stories
-        if story_arg is not None:
-            if not story_arg.isdecimal() or int(story_arg) >= len(stories):
-                return PlainTextResponse("not found", status_code=404)
-            selected = [stories[int(story_arg)]]
-        paragraphs = [". ".join((s.headline, " ".join(word for _, word in reading_words(s, cfg.reader_country)))) for s in selected]
-        if not paragraphs:
-            return PlainTextResponse("no stories for this day", status_code=404)
-        text = "\n\n".join(paragraphs)
-        digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:20]
-        cache = Path("/var/lib/newsrelay/reader-audio")
-        cache.mkdir(parents=True, exist_ok=True)
-        scope = f"story-{story_arg}" if story_arg is not None else "day"
-        target = cache / f"{d.isoformat()}-{scope}-{digest}.mp3"
-        if not target.is_file():
-            async with audio_lock:
-                if not target.is_file():
-                    try:
-                        with tempfile.TemporaryDirectory(dir=cache) as tmp:
-                            staging = target.with_name(f"{target.stem}.tmp.mp3")
-                            await asyncio.to_thread(_synthesize_mp3, text, Path(tmp) / "day.wav", staging)
-                            staging.replace(target)
-                    except Exception:
-                        return PlainTextResponse("speech generation is temporarily unavailable", status_code=503)
-        return FileResponse(target, media_type="audio/mpeg", filename=f"briefing-{d.isoformat()}.mp3", headers=HEADERS)
+        path = audio_dir(cfg, d) / name
+        if not path.is_file():
+            return PlainTextResponse("not found", status_code=404)
+        filename = (
+            f"briefing-{d.isoformat()}.mp3" if name == "day.mp3" else f"briefing-{d.isoformat()}-{name}"
+        )
+        return FileResponse(
+            path,
+            media_type="audio/mpeg",
+            filename=filename,
+            content_disposition_type="inline",
+            headers=FILE_HEADERS,
+        )
 
     async def healthz(_req: Request) -> Response:
         return PlainTextResponse("ok")
@@ -255,61 +229,14 @@ def create_reader_app(cfg: Config) -> Starlette:
             Route("/", index),
             Route("/day/{day}", day_page),
             Route("/day/{day}/pdf/{name}", pdf),
-            Route("/day/{day}/audio.mp3", audio),
+            Route("/day/{day}/audio/{name}", mp3),
             Route("/healthz", healthz),
         ]
     )
 
 
-def _synthesize_mp3(text: str, wav_path: Path, mp3_path: Path) -> None:
-    """Create a cached, all-local Kokoro voice track and encode it as MP3."""
-    global _kokoro
-    with _kokoro_thread_lock:
-        if _kokoro is None:
-            from kokoro_onnx import Kokoro
-
-            if not _KOKORO_MODEL.is_file() or not _KOKORO_VOICES.is_file():
-                raise RuntimeError("Kokoro model files are not installed")
-            _kokoro = Kokoro(str(_KOKORO_MODEL), str(_KOKORO_VOICES))
-        with sf.SoundFile(wav_path, mode="w", samplerate=24000, channels=1, subtype="PCM_16") as wav:
-            for chunk in _speech_chunks(text):
-                samples, sample_rate = _kokoro.create(chunk, voice="af_heart", speed=1.0, lang="en-us")
-                if sample_rate != 24000:
-                    raise RuntimeError(f"Unexpected Kokoro sample rate: {sample_rate}")
-                wav.write(np.asarray(samples, dtype=np.float32))
-        subprocess.run(
-            ["ffmpeg", "-y", "-v", "error", "-i", str(wav_path), "-codec:a", "libmp3lame", "-q:a", "3", str(mp3_path)],
-            check=True,
-            timeout=900,
-        )
-
-
-def _speech_chunks(text: str, limit: int = 2800) -> list[str]:
-    chunks: list[str] = []
-    for paragraph in text.splitlines():
-        current = ""
-        for sentence in re.split(r"(?<=[.!?])\s+", paragraph):
-            words = sentence.split()
-            fragment = ""
-            for word in words:
-                if len(fragment) + len(word) + 1 > limit:
-                    if current:
-                        chunks.append(current)
-                        current = ""
-                    if fragment:
-                        chunks.append(fragment)
-                    fragment = word
-                else:
-                    fragment = f"{fragment} {word}".strip()
-            if fragment:
-                if current and len(current) + len(fragment) + 1 > limit:
-                    chunks.append(current)
-                    current = fragment
-                else:
-                    current = f"{current} {fragment}".strip()
-        if current:
-            chunks.append(current)
-    return chunks
+def _page(template: str) -> str:
+    return template.replace("{{TRANSLATE}}", TRANSLATE_HTML)
 
 
 _BASE_CSS = """
@@ -318,21 +245,31 @@ _BASE_CSS = """
 --accent:#8fb3dd;--pivot:#ff7a6b;--line:#2e2e36}}
 *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--ink);
 font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{top:0!important}.skiptranslate iframe,.goog-te-banner-frame{display:none!important}
 a{color:var(--accent)}.muted{color:var(--muted)}
 .wrap{max-width:760px;margin:0 auto;padding:20px 16px 40px}
 .kicker{font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:600}
 h1{font-family:"Iowan Old Style","Palatino Linotype",Georgia,serif;font-size:1.9rem;line-height:1.15;margin:.3rem 0 1.2rem}
+.lang{display:flex;align-items:center;gap:8px;font-size:.8rem;color:var(--muted)}
+.lang select{font:inherit;font-size:.82rem;padding:4px 6px;border:1px solid var(--line);border-radius:8px;
+background:var(--card);color:var(--ink)}
+.goog-logo-link,.goog-te-gadget>span{display:none!important}.goog-te-gadget{font-size:0!important;color:transparent!important}
 """
+
+# Google Website Translator: translates the page text in the browser. The speed-reading stage is
+# excluded (translate="no"): translating one flashing word at a time would make no sense.
+TRANSLATE_HTML = """<div class="lang notranslate" translate="no"><span>Language</span><div id="gt"></div></div>
+<script>function googleTranslateElementInit(){new google.translate.TranslateElement({pageLanguage:"en",autoDisplay:false},"gt");}</script>
+<script src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit" async></script>"""
 
 INDEX_HTML = (
     """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Daily Briefings</title><style>"""
     + _BASE_CSS
     + """
+.head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
 ul{list-style:none;padding:0;margin:0}li{display:flex;justify-content:space-between;align-items:center;gap:12px;
 background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px}
-.translate{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin:10px 0 16px;color:var(--muted);font-size:.85rem}
-.translate select,.translate button{font:inherit;border:1px solid var(--line);border-radius:8px;padding:7px;background:var(--card);color:var(--ink)}
 details{margin:0 0 8px}summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;
 align-items:baseline;gap:12px;padding:10px 4px;border-bottom:1px solid var(--line)}
 summary::-webkit-details-marker{display:none}
@@ -345,31 +282,24 @@ summary span{margin-left:auto;font-size:.8rem;color:var(--muted);font-weight:400
 .w{margin-left:12px}.w>summary{font-size:.92rem;color:var(--muted);font-weight:600}
 .w ul{margin:10px 0 4px}
 .date{font-weight:600}.actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
-.actions a{text-decoration:none;padding:8px 14px;border-radius:999px;font-weight:600;font-size:.9rem}
+.actions a,.actions span{text-decoration:none;padding:8px 14px;border-radius:999px;font-weight:600;font-size:.9rem}
 .primary{background:var(--accent);color:var(--bg)!important}.ghost{border:1px solid var(--line)}
-</style></head><body><main class="wrap"><div class="kicker">News Relay</div><h1>Daily Briefings</h1>
-{{TRANSLATE}}
-<ul>{{ITEMS}}</ul></main><script>
-const translateLang = document.getElementById("translate-lang");
-const browserLang = (navigator.language || "en").split("-")[0].toLowerCase();
-if ([...translateLang.options].some(option => option.value.toLowerCase() === browserLang)) translateLang.value = browserLang;
-else translateLang.value = "en";
-document.getElementById("translate-go").onclick = () => {
-  const lang = translateLang.value;
-  const target = "https://translate.google.com/translate?sl=auto&tl=" + encodeURIComponent(lang) + "&u=" + encodeURIComponent(location.href);
-  window.open(target, "_blank", "noopener");
-};
-</script></body></html>"""
+.off{color:var(--muted);opacity:.55;cursor:default}
+</style></head><body><main class="wrap"><div class="head"><div><div class="kicker">News Relay</div>
+<h1>Daily Briefings</h1></div>{{TRANSLATE}}</div>
+<ul>{{ITEMS}}</ul></main></body></html>"""
 )
 
 READER_HTML = (
-    """<!doctype html><html lang="en"><head><meta charset="utf-8">
+    (
+        """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>{{TITLE}} · Speed reading</title><style>"""
-    + _BASE_CSS
-    + """
-.top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
-.top a{text-decoration:none;font-size:.9rem}
+        + _BASE_CSS
+        + """
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.links{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.links nav a{text-decoration:none;font-size:.9rem;margin-left:12px}
 .stories{display:flex;gap:8px;overflow-x:auto;padding:4px 0 12px;scrollbar-width:thin}
 .stories button{flex:0 0 auto;max-width:240px;text-align:left;border:1px solid var(--line);background:var(--card);
 color:var(--ink);border-radius:10px;padding:8px 10px;font:inherit;font-size:.82rem;cursor:pointer;line-height:1.3}
@@ -409,17 +339,16 @@ background:var(--bg);color:var(--ink)}
 .presets button{font:inherit;font-size:.8rem;border:1px solid var(--line);background:none;color:var(--muted);
 border-radius:999px;padding:4px 10px;cursor:pointer}
 .opts{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;font-size:.85rem;color:var(--muted)}
+.opts .note{flex-basis:100%;font-size:.78rem;min-height:1em}
 .hint{font-size:.78rem;color:var(--muted);margin-top:14px}
-.pdfs a{margin-left:10px}
-.read-aloud{margin:14px 0 0;color:var(--muted);font-size:.9rem}
-.pdf-viewer{width:100%;height:min(78vh,1000px);min-height:560px;border:1px solid var(--line);border-radius:12px;background:var(--card);margin-top:12px}
-.pdf-section{margin-top:24px}.pdf-section h2{font-family:"Iowan Old Style","Palatino Linotype",Georgia,serif;font-size:1.35rem}
+.doc{margin-top:28px}.doc h2{font-family:"Iowan Old Style","Palatino Linotype",Georgia,serif;font-size:1.25rem;margin:0 0 4px}
+.pages canvas{display:block;width:100%;height:auto;margin:0 auto 14px;background:#fff;border-radius:6px;
+box-shadow:0 1px 2px rgba(0,0,0,.08),0 4px 18px rgba(0,0,0,.06)}
 </style></head><body><main class="wrap">
 <div class="top"><div><div class="kicker">Speed reading</div><h1>{{TITLE}}</h1></div>
-<div><a href="/">All days</a><span class="pdfs" id="pdfs"></span><a href="/day/{{DAY}}/audio.mp3" download>MP3</a></div></div>
-{{TRANSLATE}}
+<div class="links"><nav><a href="/">All days</a><span id="files"></span></nav>{{TRANSLATE}}</div></div>
 <div class="stories" id="stories"></div>
-<section class="stage" id="stage" aria-live="off">
+<section class="stage notranslate" id="stage" translate="no" aria-live="off">
 <div class="meta" id="meta"></div><div class="headline" id="headline"></div>
 <div class="label" id="label"></div>
 <div class="guide"><div class="word" id="word"><span class="side l"><span class="ctx" id="ctxl"></span><span class="pre" id="pre"></span></span><span class="piv" id="piv"></span><span class="side r"><span class="post" id="post"></span><span class="ctx" id="ctxr"></span></span></div></div>
@@ -433,11 +362,12 @@ border-radius:999px;padding:4px 10px;cursor:pointer}
 <input type="range" id="wpm" min="100" max="2000" step="10">
 <input type="number" id="wpmn" min="100" max="2000" step="10" aria-label="Words per minute"></div>
 <div class="presets" id="presets"></div>
-<div class="opts"><label><input type="checkbox" id="ctx" checked> Show neighbouring words</label>
+<div class="opts"><label><input type="checkbox" id="speak"> Read aloud</label>
+<label><input type="checkbox" id="ctx" checked> Show neighbouring words</label>
 <label><input type="checkbox" id="pause" checked> Pause longer at punctuation</label>
-<label class="read-aloud"><input type="checkbox" id="speak"> Read this article aloud</label></div></section>
+<span class="note" id="speaknote"></span></div></section>
 <p class="hint">Space: play/pause · Left/Right: 10 words · Up/Down: speed ±25 · Tap the word to play or pause.</p>
-<section class="pdf-section"><h2>Read the PDF</h2>{{PDF}}</section>
+<section class="doc" id="doc" hidden><h2>Read the PDF</h2><p class="muted" id="docnote">Loading…</p><div class="pages" id="pages"></div></section>
 </main>
 <script>
 const DATA = {{DATA}};
@@ -447,10 +377,9 @@ const tokens = []; const starts = [];
 DATA.stories.forEach((s, si) => { starts.push(tokens.length); s.words.forEach(([label, w], wi) => tokens.push({si, label, w, first: wi === 0})); });
 let i = Math.min(+(store("pos:" + DATA.day) || 0), Math.max(0, tokens.length - 1));
 let wpm = Math.max(100, Math.min(2000, +(store("wpm") || 350)));
-let timer = null;
-let speakingStory = -1;
-let articleAudio = null;
+let timer = null, playing = false;
 
+// ---- words -----------------------------------------------------------------------------------
 function pivotIndex(w) { const n = w.replace(/[^\\p{L}\\p{N}]/gu, "").length; return n <= 1 ? 0 : n <= 5 ? 1 : n <= 9 ? 2 : n <= 13 ? 3 : 4; }
 function splitWord(w) {
   let lead = 0; while (lead < w.length && !/[\\p{L}\\p{N}]/u.test(w[lead])) lead++;
@@ -467,7 +396,6 @@ function delay(t) {
   return d;
 }
 function context(at) {
-  // Neighbouring words of the same story, faded in beside the main word (plain text only).
   if (!$("ctx").checked) return ["", ""];
   const si = tokens[at].si, before = [], after = [];
   for (let k = at - 1; k >= 0 && before.length < 8 && tokens[k].si === si; k--) before.unshift(tokens[k].w);
@@ -483,50 +411,97 @@ function render() {
   $("label").textContent = t.label; $("meta").textContent = s.meta; $("headline").textContent = s.headline;
   $("bar").style.width = (100 * (i + 1) / tokens.length) + "%";
   $("pos").textContent = "Story " + (t.si + 1) + " of " + DATA.stories.length + " · word " + (i + 1) + " of " + tokens.length;
-  const mins = (tokens.length - i) / wpm; $("left").textContent = mins < 1 ? Math.ceil(mins * 60) + " s left" : Math.ceil(mins) + " min left";
+  const eff = speaking() ? effectiveWpm(t.si) : wpm;
+  const mins = (tokens.length - i) / eff; $("left").textContent = mins < 1 ? Math.ceil(mins * 60) + " s left" : Math.ceil(mins) + " min left";
   document.querySelectorAll(".stories button").forEach((el, k) => el.classList.toggle("on", k === t.si));
-  if ($("speak").checked && speakingStory !== t.si) speakArticle(t.si);
   store("pos:" + DATA.day, i);
 }
-function speakArticle(si) {
-  if (articleAudio) { articleAudio.pause(); articleAudio = null; }
-  const story = DATA.stories[si];
-  const words = story.words.length + story.headline.trim().split(/\\s+/).length;
-  const player = new Audio("/day/" + DATA.day + "/audio.mp3?story=" + si);
-  player.onloadedmetadata = () => { player.playbackRate = speechRate(player.duration, words); };
-  player.onended = () => { if (articleAudio === player) { articleAudio = null; speakingStory = -1; $("speak").checked = false; } };
-  player.onerror = () => { if (articleAudio === player) { articleAudio = null; speakingStory = -1; $("speak").checked = false; } };
-  articleAudio = player;
-  speakingStory = si;
-  player.play().catch(() => { if (articleAudio === player) { articleAudio = null; speakingStory = -1; $("speak").checked = false; } });
+
+// ---- read aloud: the audio clock drives the words ----------------------------------------------
+const AUDIO = DATA.audio; const audio = new Audio(); audio.preload = "auto"; audio.preservesPitch = true;
+let audioStory = -1, raf = 0;
+const MAX_RATE = 4, MIN_RATE = 0.5;
+const plans = (AUDIO ? AUDIO.stories : []).map((sa, si) => {
+  // per segment: cumulative character weights of its words, for positions inside a sentence
+  const segs = sa.segments.map(([t0, t1, w0, w1]) => {
+    const lens = []; let acc = 0;
+    for (let k = w0; k < w1; k++) { acc += (DATA.stories[si].words[k] || ["", ""])[1].length + 1; lens.push(acc); }
+    return {t0, t1, w0, w1, lens, total: acc || 1};
+  });
+  const spoken = segs.reduce((n, s) => n + (s.t1 - s.t0), 0) || 1;
+  return {url: sa.url, segs, natural: sa.words / (spoken / 60)};
+});
+function speaking() { return $("speak").checked && plans.length > 0; }
+function rateFor(si) { const p = plans[si]; return p ? Math.max(MIN_RATE, Math.min(MAX_RATE, wpm / p.natural)) : 1; }
+function effectiveWpm(si) { const p = plans[si]; return p ? Math.round(p.natural * rateFor(si)) : wpm; }
+function wordAt(si, t) {
+  const p = plans[si]; let last = 0;
+  for (const s of p.segs) {
+    if (t < s.t0) return last;
+    if (t < s.t1) { const target = (t - s.t0) / (s.t1 - s.t0) * s.total; let k = 0; while (k < s.lens.length - 1 && s.lens[k] < target) k++; return s.w0 + k; }
+    last = Math.max(s.w0, s.w1 - 1);
+  }
+  return last;
 }
-function speechRate(duration, words) { return Math.max(0.5, Math.min(12, wpm * duration / (words * 60))); }
+function timeOf(si, w) {
+  const p = plans[si];
+  for (const s of p.segs) if (w >= s.w0 && w < s.w1) { const before = w > s.w0 ? s.lens[w - s.w0 - 1] : 0; return s.t0 + before / s.total * (s.t1 - s.t0); }
+  const next = p.segs.find(s => s.w0 >= w); return next ? next.t0 : 0;
+}
+function speakNote() {
+  if (!plans.length) { $("speaknote").textContent = AUDIO === null ? "The spoken version is being prepared on the server." : ""; return; }
+  if (!$("speak").checked) { $("speaknote").textContent = ""; return; }
+  const si = tokens.length ? tokens[i].si : 0, r = rateFor(si);
+  $("speaknote").textContent = r >= MAX_RATE && wpm > effectiveWpm(si) ? "Voice speed is limited to " + MAX_RATE + "× (about " + effectiveWpm(si) + " words per minute)." : "";
+}
+function loop() {
+  const si = audioStory; if (si < 0) return;
+  const w = starts[si] + wordAt(si, audio.currentTime);
+  if (w !== i) { i = w; render(); }
+  raf = requestAnimationFrame(loop);
+}
+function startAudio() {
+  const si = tokens[i].si;
+  if (audioStory !== si) { audio.src = plans[si].url; audioStory = si; }
+  const seek = () => { audio.currentTime = timeOf(si, i - starts[si]); audio.playbackRate = rateFor(si); audio.play().catch(() => stop()); };
+  if (audio.readyState >= 1) seek(); else audio.addEventListener("loadedmetadata", seek, {once: true});
+  cancelAnimationFrame(raf); raf = requestAnimationFrame(loop); speakNote();
+}
+audio.addEventListener("ended", () => {
+  const next = audioStory + 1; cancelAnimationFrame(raf);
+  if (playing && next < DATA.stories.length) { i = starts[next]; render(); startAudio(); } else stop();
+});
+
+// ---- transport ---------------------------------------------------------------------------------
 function step() {
   if (i >= tokens.length - 1) { stop(); return; }
   i++; render(); timer = setTimeout(step, delay(tokens[i]));
 }
-function play() { if (!tokens.length) return; if (i >= tokens.length - 1) i = 0; $("play").textContent = "Pause"; render(); timer = setTimeout(step, delay(tokens[i])); }
-function stop() { clearTimeout(timer); timer = null; $("play").textContent = "Play"; }
-function toggle() { timer ? stop() : play(); }
-function jump(n) { const run = !!timer; stop(); i = Math.max(0, Math.min(tokens.length - 1, i + n)); render(); if (run) play(); }
-function setWpm(v) { wpm = Math.max(100, Math.min(2000, Math.round(+v / 10) * 10 || 350)); $("wpm").value = wpm; $("wpmn").value = wpm; store("wpm", wpm); render(); if ($("speak").checked && tokens.length && articleAudio) { const s = DATA.stories[tokens[i].si]; const count = s.words.length + s.headline.trim().split(/\\s+/).length; if (Number.isFinite(articleAudio.duration)) articleAudio.playbackRate = speechRate(articleAudio.duration, count); } }
+function play() {
+  if (!tokens.length) return; if (i >= tokens.length - 1) i = 0;
+  playing = true; $("play").textContent = "Pause"; render();
+  if (speaking()) startAudio(); else timer = setTimeout(step, delay(tokens[i]));
+}
+function stop() { playing = false; clearTimeout(timer); timer = null; cancelAnimationFrame(raf); audio.pause(); $("play").textContent = "Play"; }
+function toggle() { playing ? stop() : play(); }
+function jump(n) { const run = playing; stop(); i = Math.max(0, Math.min(tokens.length - 1, i + n)); render(); if (run) play(); }
+function setWpm(v) {
+  wpm = Math.max(100, Math.min(2000, Math.round(+v / 10) * 10 || 350));
+  $("wpm").value = wpm; $("wpmn").value = wpm; store("wpm", wpm);
+  if (speaking() && audioStory >= 0) audio.playbackRate = rateFor(audioStory);
+  speakNote(); render();
+}
 
-DATA.stories.forEach((s, k) => { const b = document.createElement("button"); b.innerHTML = "<b>" + String(k + 1).padStart(2, "0") + "</b>"; b.appendChild(document.createTextNode(s.headline)); b.onclick = () => { const run = !!timer; stop(); i = starts[k]; render(); if (run) play(); }; $("stories").appendChild(b); });
+DATA.stories.forEach((s, k) => { const b = document.createElement("button"); b.innerHTML = '<b class="notranslate" translate="no">' + String(k + 1).padStart(2, "0") + '</b>'; b.appendChild(document.createTextNode(s.headline)); b.onclick = () => { const run = playing; stop(); i = starts[k]; render(); if (run) play(); }; $("stories").appendChild(b); });
 [200, 300, 400, 500, 700, 1000, 1500, 2000].forEach(v => { const b = document.createElement("button"); b.textContent = v; b.onclick = () => setWpm(v); $("presets").appendChild(b); });
-DATA.pdfs.forEach((u, k) => { const a = document.createElement("a"); a.href = u; a.textContent = DATA.pdfs.length > 1 ? "PDF " + (k + 1) : "PDF"; $("pdfs").appendChild(a); });
+const link = (href, text, file) => { const a = document.createElement("a"); a.href = href; a.textContent = text; if (file) a.download = file; $("files").appendChild(a); };
+DATA.pdfs.forEach((u, k) => link(u, DATA.pdfs.length > 1 ? "PDF " + (k + 1) : "PDF"));
+if (AUDIO) link(AUDIO.day, "MP3", "briefing-" + DATA.day + ".mp3");
+$("speak").disabled = !plans.length; $("speak").checked = plans.length > 0 && store("speak") === "1";
+$("speak").onchange = () => { store("speak", $("speak").checked ? "1" : "0"); const run = playing; stop(); speakNote(); if (run) play(); };
 $("wpm").oninput = e => setWpm(e.target.value); $("wpmn").onchange = e => setWpm(e.target.value);
 $("play").onclick = toggle; $("back").onclick = () => jump(-10); $("fwd").onclick = () => jump(10);
 $("stage").onclick = toggle; $("ctx").onchange = render;
-$("speak").onchange = () => { if ($("speak").checked && tokens.length) speakArticle(tokens[i].si); else { if (articleAudio) articleAudio.pause(); articleAudio = null; speakingStory = -1; } };
-document.getElementById("translate-go").onclick = () => {
-  const lang = document.getElementById("translate-lang").value;
-  const target = "https://translate.google.com/translate?sl=auto&tl=" + encodeURIComponent(lang) + "&u=" + encodeURIComponent(location.href);
-  window.open(target, "_blank", "noopener");
-};
-const translateLang = document.getElementById("translate-lang");
-const browserLang = (navigator.language || "en").split("-")[0].toLowerCase();
-if ([...translateLang.options].some(option => option.value.toLowerCase() === browserLang)) translateLang.value = browserLang;
-else translateLang.value = "en";
 document.addEventListener("keydown", e => {
   if (e.target.tagName === "INPUT" && e.target.type === "number") return;
   if (e.code === "Space") { e.preventDefault(); toggle(); }
@@ -534,5 +509,35 @@ document.addEventListener("keydown", e => {
   else if (e.key === "ArrowUp") { e.preventDefault(); setWpm(wpm + 25); } else if (e.key === "ArrowDown") { e.preventDefault(); setWpm(wpm - 25); }
 });
 setWpm(wpm);
+
+// ---- the PDF below, rendered with pdf.js (works on phones, where inline PDFs often do not) --------
+async function loadPdf() {
+  if (!DATA.pdfs.length) return;
+  $("doc").hidden = false;
+  try {
+    await new Promise((ok, fail) => { const s = document.createElement("script"); s.src = "PDFJS/pdf.min.js"; s.integrity = "PDFJS_SRI"; s.crossOrigin = "anonymous"; s.onload = ok; s.onerror = fail; document.head.appendChild(s); });
+    const src = await (await fetch("PDFJS/pdf.worker.min.js", {integrity: "PDFJS_WORKER_SRI"})).text();
+    pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(new Blob([src], {type: "text/javascript"}));
+    const doc = await pdfjsLib.getDocument(DATA.pdfs[DATA.pdfs.length - 1]).promise;
+    $("docnote").textContent = doc.numPages + " pages · " ;
+    const a = document.createElement("a"); a.href = DATA.pdfs[DATA.pdfs.length - 1]; a.textContent = "open or download"; $("docnote").appendChild(a);
+    const width = $("pages").clientWidth, ratio = Math.min(window.devicePixelRatio || 1, 2.5);
+    for (let n = 1; n <= doc.numPages; n++) {
+      const page = await doc.getPage(n), base = page.getViewport({scale: 1});
+      const vp = page.getViewport({scale: width / base.width * ratio});
+      const c = document.createElement("canvas"); c.width = vp.width; c.height = vp.height;
+      $("pages").appendChild(c);
+      await page.render({canvasContext: c.getContext("2d"), viewport: vp}).promise;
+    }
+  } catch (e) {
+    $("docnote").textContent = "The PDF could not be shown here. ";
+    const a = document.createElement("a"); a.href = DATA.pdfs[DATA.pdfs.length - 1]; a.textContent = "Open it directly"; $("docnote").appendChild(a);
+  }
+}
+loadPdf();
 </script></body></html>"""
+    )
+    .replace("PDFJS_WORKER_SRI", PDFJS_WORKER_SRI)
+    .replace("PDFJS_SRI", PDFJS_SRI)
+    .replace("PDFJS", PDFJS)
 )

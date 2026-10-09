@@ -32,18 +32,11 @@ python3 -c 'import sqlite3; c=sqlite3.connect(":memory:"); c.execute("create vir
   || die "SQLite FTS5 support required"
 VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' "$SRC/pyproject.toml")
 say "installing newsrelay $VERSION on ${PRETTY_NAME}"
-case "$(uname -m)" in
-  aarch64|arm64) ;;
-  *) die "Kokoro reader audio requires 64-bit ARM (aarch64); found $(uname -m)" ;;
-esac
 
 # --- 2. packages (only what is missing) ---------------------------------------------------------
 NEED=""
 python3 -c 'import venv, ensurepip' 2>/dev/null || NEED="$NEED python3-venv"
 command -v sqlite3 >/dev/null || NEED="$NEED sqlite3"
-command -v ffmpeg >/dev/null || NEED="$NEED ffmpeg"
-command -v espeak-ng >/dev/null || NEED="$NEED espeak-ng"
-command -v curl >/dev/null || NEED="$NEED curl"
 if [ -n "$NEED" ]; then
   say "apt install:$NEED"
   DEBIAN_FRONTEND=noninteractive apt-get install -y -q $NEED >/dev/null
@@ -57,22 +50,6 @@ fi
 install -d -m 0755 -o root -g root "$APP" "$ETC"
 install -d -m 0700 -o root -g root "$SECRETS"
 install -d -m 0750 -o "$USER_NAME" -g "$USER_NAME" "$STATE" "$STATE/backups"
-
-# --- 3a. local Kokoro voice model (quantized 82M model, CPU inference) --------------------------
-KOKORO="$STATE/models/kokoro"
-install -d -m 0750 -o "$USER_NAME" -g "$USER_NAME" "$KOKORO"
-download_model() {
-  name=$1
-  url=$2
-  [ -s "$KOKORO/$name" ] && return
-  say "downloading Kokoro model asset $name"
-  curl --fail --location --retry 3 --output "$KOKORO/$name.tmp" "$url"
-  chown "$USER_NAME:$USER_NAME" "$KOKORO/$name.tmp"
-  chmod 0640 "$KOKORO/$name.tmp"
-  mv "$KOKORO/$name.tmp" "$KOKORO/$name"
-}
-download_model kokoro-v1.0.int8.onnx https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/kokoro-v1.0.int8.onnx
-download_model voices-v1.0.bin https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/voices-v1.0.bin
 
 # --- 4. code + virtualenv in a fresh release directory (old releases stay for rollback) --------
 REL=$APP/releases/$VERSION-$TS
@@ -204,6 +181,16 @@ systemctl reset-failed newsrelay-presence.service 2>/dev/null || true
 systemctl restart newsrelay-presence.service || say "WARNING: presence service did not start (cosmetic only)"
 systemctl reset-failed newsrelay-reader.service 2>/dev/null || true
 systemctl restart newsrelay-reader.service || say "WARNING: reader service did not start (optional)"
+# Spoken briefings (optional, set up by scripts/setup-tts.sh): refresh units and the tts venv's locked deps.
+if systemctl is-enabled --quiet newsrelay-audio.timer 2>/dev/null; then
+  for u in newsrelay-audio.service newsrelay-audio.timer; do
+    install -m 0644 -o root -g root "$APP/current/src/systemd/$u" "/etc/systemd/system/$u"
+  done
+  PIP_CONFIG_FILE=/dev/null /opt/newsrelay/tts/venv/bin/pip install -q --require-hashes --no-deps \
+    -r "$APP/current/src/requirements.lock" -r "$APP/current/src/requirements-tts.lock" \
+    || say "WARNING: tts venv update failed (spoken briefings keep the previous packages)"
+  systemctl daemon-reload
+fi
 # Public reader tunnel (optional, set up by scripts/expose-reader-public.sh): refresh the unit file only;
 # not restarted here, because a quick tunnel gets a new address on every restart.
 if systemctl is-enabled --quiet newsrelay-tunnel.service 2>/dev/null; then

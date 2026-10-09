@@ -145,6 +145,22 @@ def cmd_reader(cfg: Config, _a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_audio(cfg: Config, a: argparse.Namespace) -> int:
+    """Render missing spoken briefings (MP3 + word timings) with Kokoro; run by newsrelay-audio.timer."""
+    from datetime import date
+
+    from .audio.build import run
+    from .database import connect
+
+    conn = connect(cfg.db_path, readonly=True)
+    try:
+        n = run(cfg, conn, days_back=a.days, only=date.fromisoformat(a.day) if a.day else None)
+    finally:
+        conn.close()
+    print(f"days rendered: {n}")
+    return 0
+
+
 def cmd_presence(cfg: Config, _a: argparse.Namespace) -> int:
     from .publishing import presence
 
@@ -472,6 +488,9 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("worker")
     sub.add_parser("presence")
     sub.add_parser("reader")
+    au = sub.add_parser("audio")
+    au.add_argument("--day", help="render this day (YYYY-MM-DD) only")
+    au.add_argument("--days", type=int, default=2, help="look back this many days (default 2)")
     mg = sub.add_parser("migrate")
     mg.add_argument("--db", help="migrate this database file instead of the configured one")
     uc = sub.add_parser("upgrade-check")
@@ -522,6 +541,7 @@ def main(argv: list[str] | None = None) -> int:
         "worker": cmd_worker,
         "presence": cmd_presence,
         "reader": cmd_reader,
+        "audio": cmd_audio,
         "migrate": cmd_migrate,
         "maintenance": cmd_maintenance,
         "backup": cmd_backup,

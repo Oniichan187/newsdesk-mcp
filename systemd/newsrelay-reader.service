@@ -10,7 +10,6 @@ Type=simple
 User=newsrelay
 Group=newsrelay
 Environment=NEWSRELAY_CONFIG=/etc/newsrelay/config.toml PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
-Environment=OMP_NUM_THREADS=2 OPENBLAS_NUM_THREADS=1
 ExecStart=/opt/newsrelay/current/venv/bin/newsrelay reader
 Restart=on-failure
 RestartSec=10
@@ -52,7 +51,7 @@ SystemCallErrorNumber=EPERM
 # Loopback only: tailscaled proxies tailnet requests to 127.0.0.1.
 IPAddressDeny=any
 IPAddressAllow=localhost
-MemoryMax=768M
+MemoryMax=200M
 TasksMax=32
 
 [Install]

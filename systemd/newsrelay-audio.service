@@ -1,0 +1,47 @@
+[Unit]
+Description=News Relay spoken briefings (Kokoro TTS -> MP3 + word timings for the reader)
+Documentation=file:///opt/newsrelay/current/src/docs/CUSTOMIZING.md
+After=network.target
+
+[Service]
+Type=oneshot
+User=newsrelay
+Group=newsrelay
+Environment=NEWSRELAY_CONFIG=/etc/newsrelay/config.toml PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+# Dependencies (kokoro-onnx, onnxruntime, lameenc) live in their own venv; the code is the current release.
+Environment=PYTHONPATH=/opt/newsrelay/current/src/src
+ExecStart=/opt/newsrelay/tts/venv/bin/python -m newsrelay.cli audio
+Nice=15
+IOSchedulingClass=idle
+CPUQuota=300%
+TimeoutStartSec=4h
+
+StateDirectory=newsrelay
+StateDirectoryMode=0750
+UMask=0027
+ReadOnlyPaths=/opt/newsrelay
+
+# Hardening (no network needed: the model files are local)
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateNetwork=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+MemoryMax=1500M

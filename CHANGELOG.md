@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.12.0 — 2026-10-09
+
+- Replaces the 1.11.0 audio, which synthesised on request inside the reader (over an hour of CPU per day with the int8 model, so requests timed out and anyone could load the Pi) and had no word timings.
+- **Spoken briefings** with Kokoro (82M, Apache-2.0) on the Pi: `newsrelay audio` /
+  `newsrelay-audio.timer` render one MP3 per story and per day plus word timings, in the background
+  after each run (re-rendered only when the content changes). `scripts/setup-tts.sh` builds a
+  separate venv from the hash-pinned `requirements-tts.lock` and downloads the model (SHA-256
+  checked). Settings `tts_voice` (default `af_heart`), `tts_lang`, `tts_speed`, `tts_threads`.
+- Reader: **Read / PDF / MP3** per day; **Read aloud** in the speed reader — the voice drives the
+  words, at the chosen words-per-minute (voice speed capped at 4×); MP3s support seeking.
+- Reader: the day's **PDF is shown below** the controls (pdf.js from cdnjs, SRI-pinned), so it
+  works on phones too.
+- Reader: **Google Website Translator** for every language; the flashing word stays untranslated.
+
 ## 1.11.0 — 2026-10-07
 
 - Reader index: Read, Read PDF, and full-day MP3 actions for each briefing day.
