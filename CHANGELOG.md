@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.13.1 — 2026-10-10
+
+- Quiet logs: fontTools (PDF font subsetting, ~135 lines per PDF), fpdf and phonemizer only log warnings.
+
 ## 1.13.0 — 2026-10-10
 
 - **Publishing in small steps**: since 2026-10-08 ChatGPT's safety layer blocked the single large

@@ -83,7 +83,8 @@ def setup_logging(level: str = "INFO") -> None:
     root.handlers[:] = [handler]
     root.setLevel(level)
     # httpx-style libraries log full URLs at INFO; keep them quiet (URLs may contain the webhook token).
-    for noisy in ("httpx", "httpx2", "httpcore", "uvicorn.access"):
+    # fontTools (PDF font subsetting) and phonemizer (TTS) log every step at INFO.
+    for noisy in ("httpx", "httpx2", "httpcore", "uvicorn.access", "fontTools", "fpdf", "phonemizer"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
