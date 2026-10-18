@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.14.0 — 2026-10-18
+
+- **Index in the first Discord message**: the message with the PDF now lists the day's stories
+  (most important first) with importance and one line each — the new optional `teaser` field, else
+  the first sentence of the impact on the reader. It always fits one message (teasers shortened,
+  then dropped, then the list cut with "…and N more below").
+- Reader: the voice is a **Voice on/off** button next to Back/Play/Next (key V) instead of a
+  checkbox, and works while playing. Sound now starts inside the tap (phones block sound that starts
+  later); if the browser still refuses it, the words keep running silently with a note.
+
 ## 1.13.1 — 2026-10-10
 
 - Quiet logs: fontTools (PDF font subsetting, ~135 lines per PDF), fpdf and phonemizer only log warnings.

@@ -109,7 +109,7 @@ def test_reader_serves_audio_with_ranges_and_three_buttons(cfg, conn, clock):
             assert ">Read</a>" in index and "/pdf/briefing-2026-10-03" in index
             assert 'href="/day/2026-10-03/audio/day.mp3" download="briefing-2026-10-03.mp3">MP3' in index
             page = c.get("/day/2026-10-03").text
-            assert '"/day/2026-10-03/audio/story-01.mp3"' in page and 'id="speak"' in page
+            assert '"/day/2026-10-03/audio/story-01.mp3"' in page and 'id="voice"' in page
             assert 'id="pages"' in page and "integrity" in page  # PDF below, pdf.js pinned by SRI
             assert 'translate="no"' in page and "translate_a/element.js" in page
             r = c.get("/day/2026-10-03/audio/day.mp3", headers={"Range": "bytes=0-99"})

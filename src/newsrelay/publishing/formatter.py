@@ -159,18 +159,75 @@ def render_text(story: Story, display_tz: str, country: str = "Austria") -> str:
     return sanitize_mentions("\n".join(parts))
 
 
-def briefing_payload(path: str, title: str, stories: int, reader_url: str) -> dict[str, Any]:
-    """The message that carries the day's PDF; it is queued before the stories."""
-    count = f"{stories} {'story' if stories == 1 else 'stories'}"
-    lines = [f"**{title}**", f"{count} · PDF for reading on any device"]
+def teaser_of(story: Story) -> str:
+    """The index line for a story: its teaser, else the first sentence of the impact on the reader."""
+    if story.teaser:
+        return story.teaser
+    first = re.split(r"(?<=[.!?])\s+", story.impact.strip(), maxsplit=1)[0]
+    return first
+
+
+def _clip(text: str, n: int) -> str:
+    text = " ".join(text.split())
+    return text if ulen(text) <= n else text[: max(0, n - 1)].rstrip(" ,;:–-") + "…"
+
+
+def briefing_index(stories: list[Story], budget: int) -> str:
+    """Numbered contents of the day: headline, importance, and one line that says why to read it.
+
+    Fits into ``budget`` characters: teasers are shortened first, then dropped, then the list is cut.
+    """
+    if not stories:
+        return ""
+    head = "**In this briefing**"
+
+    def build(teaser_len: int | None, count: int) -> str:
+        lines = [head]
+        for n, s in enumerate(stories[:count], 1):
+            lines.append(f"**{n}.** {_clip(s.headline, 160)} · {s.importance}/10")
+            if teaser_len:
+                lines.append(f"> {_clip(teaser_of(s), teaser_len)}")
+        if count < len(stories):
+            lines.append(f"…and {len(stories) - count} more below")
+        return "\n".join(lines)
+
+    for teaser_len in (140, 110, 80, 60):
+        text = build(teaser_len, len(stories))
+        if ulen(text) <= budget:
+            return text
+    for count in range(len(stories), 0, -1):
+        text = build(None, count)
+        if ulen(text) <= budget:
+            return text
+    return ""
+
+
+def briefing_payload(
+    path: str | None,
+    title: str,
+    stories: int | list[Story],
+    reader_url: str,
+    limit: int = 1990,
+) -> dict[str, Any]:
+    """The first message of a run: title, index of the stories, and the day's PDF (if any)."""
+    items = stories if isinstance(stories, list) else []
+    total = len(items) if isinstance(stories, list) else stories
+    count = f"{total} {'story' if total == 1 else 'stories'}"
+    lines = [f"**{title}**", f"{count} · PDF for reading on any device" if path else count]
     if reader_url:
         lines.append(f"Speed reading: <{reader_url}>")
-    return {
-        "content": sanitize_mentions("\n".join(lines)),
+    text = "\n".join(lines)
+    index = briefing_index(items, limit - ulen(text) - 2)
+    if index:
+        text += "\n\n" + index
+    payload: dict[str, Any] = {
+        "content": sanitize_mentions(text),
         "allowed_mentions": {"parse": []},
         "flags": 4,
-        "file": {"path": path, "name": path.replace("\\", "/").rsplit("/", 1)[-1]},
     }
+    if path:
+        payload["file"] = {"path": path, "name": path.replace("\\", "/").rsplit("/", 1)[-1]}
+    return payload
 
 
 def build_payloads(

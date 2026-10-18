@@ -251,6 +251,18 @@ class Story(Strict):
         StringConstraints(strip_whitespace=True, min_length=10, max_length=300),
         AfterValidator(_no_control),
     ] = Field(description="One sentence: why this importance score.")
+    teaser: (
+        Annotated[
+            str,
+            StringConstraints(strip_whitespace=True, min_length=10, max_length=140),
+            AfterValidator(_no_control),
+        ]
+        | None
+    ) = Field(
+        default=None,
+        description="Index line under the headline: the single most relevant fact for readers, "
+        "factual, no clickbait (max 140 chars).",
+    )
     event_time: AwareDatetime | None = None
     sources: list[Source] = Field(min_length=1, max_length=MAX_SOURCES)
 

@@ -504,13 +504,16 @@ def _enqueue(
     now_s = timeutil.now_iso()
     if published and cfg.briefing_pdf:
         path = write_pdf(cfg, run_key, published)
-        if path is not None:
-            day = timeutil.now().astimezone(ZoneInfo(cfg.display_timezone)).date()
-            payload = briefing_payload(
-                str(path), f"Daily Briefing · {_day_title(day)}", len(published), reader_link(cfg)
-            )
-            key = hashlib.sha256(f"{run_key}|briefing-pdf".encode()).hexdigest()
-            queue.insert(0, (None, -1, key, json.dumps(payload, ensure_ascii=False)))
+        day = timeutil.now().astimezone(ZoneInfo(cfg.display_timezone)).date()
+        payload = briefing_payload(
+            str(path) if path is not None else None,
+            f"Daily Briefing · {_day_title(day)}",
+            published,
+            reader_link(cfg) if path is not None else "",
+            cfg.max_message_chars,
+        )
+        key = hashlib.sha256(f"{run_key}|briefing-pdf".encode()).hexdigest()
+        queue.insert(0, (None, -1, key, json.dumps(payload, ensure_ascii=False)))
     for story_id, seq, key, payload_s in queue:
         conn.execute(
             "INSERT INTO outbox(batch_id, story_id, seq, idempotency_key, payload, state, created_at, "

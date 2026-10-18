@@ -330,6 +330,8 @@ mask-image:linear-gradient(270deg,transparent,#000 55%)}
 .controls button{font:inherit;font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--ink);
 border-radius:999px;padding:10px 18px;min-width:64px;cursor:pointer}
 .controls button.play{background:var(--accent);border-color:var(--accent);color:var(--bg);min-width:110px}
+.controls{flex-wrap:wrap}.controls button.voice[aria-pressed=true]{border-color:var(--accent);color:var(--accent);
+box-shadow:0 0 0 1px var(--accent) inset}.controls button:disabled{opacity:.45;cursor:default}
 .speed{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
 .speed .row{display:flex;align-items:center;gap:12px}
 .speed input[type=range]{flex:1;accent-color:var(--accent)}
@@ -357,16 +359,16 @@ box-shadow:0 1px 2px rgba(0,0,0,.08),0 4px 18px rgba(0,0,0,.06)}
 </section>
 <div class="controls"><button id="back" title="Back 10 words (Left)">Back</button>
 <button id="play" class="play" title="Play / pause (Space)">Play</button>
-<button id="fwd" title="Forward 10 words (Right)">Next</button></div>
+<button id="fwd" title="Forward 10 words (Right)">Next</button>
+<button id="voice" class="voice" aria-pressed="false" title="Voice on/off (V) — follows the words per minute">Voice off</button></div>
 <section class="speed"><div class="row"><label for="wpm">Words per minute</label>
 <input type="range" id="wpm" min="100" max="2000" step="10">
 <input type="number" id="wpmn" min="100" max="2000" step="10" aria-label="Words per minute"></div>
 <div class="presets" id="presets"></div>
-<div class="opts"><label><input type="checkbox" id="speak"> Read aloud</label>
-<label><input type="checkbox" id="ctx" checked> Show neighbouring words</label>
+<div class="opts"><label><input type="checkbox" id="ctx" checked> Show neighbouring words</label>
 <label><input type="checkbox" id="pause" checked> Pause longer at punctuation</label>
 <span class="note" id="speaknote"></span></div></section>
-<p class="hint">Space: play/pause · Left/Right: 10 words · Up/Down: speed ±25 · Tap the word to play or pause.</p>
+<p class="hint">Space: play/pause · V: voice on/off · Left/Right: 10 words · Up/Down: speed ±25 · Tap the word to play or pause.</p>
 <section class="doc" id="doc" hidden><h2>Read the PDF</h2><p class="muted" id="docnote">Loading…</p><div class="pages" id="pages"></div></section>
 </main>
 <script>
@@ -377,7 +379,7 @@ const tokens = []; const starts = [];
 DATA.stories.forEach((s, si) => { starts.push(tokens.length); s.words.forEach(([label, w], wi) => tokens.push({si, label, w, first: wi === 0})); });
 let i = Math.min(+(store("pos:" + DATA.day) || 0), Math.max(0, tokens.length - 1));
 let wpm = Math.max(100, Math.min(2000, +(store("wpm") || 350)));
-let timer = null, playing = false;
+let timer = null, playing = false, voiceOn = false;
 
 // ---- words -----------------------------------------------------------------------------------
 function pivotIndex(w) { const n = w.replace(/[^\\p{L}\\p{N}]/gu, "").length; return n <= 1 ? 0 : n <= 5 ? 1 : n <= 9 ? 2 : n <= 13 ? 3 : 4; }
@@ -431,7 +433,7 @@ const plans = (AUDIO ? AUDIO.stories : []).map((sa, si) => {
   const spoken = segs.reduce((n, s) => n + (s.t1 - s.t0), 0) || 1;
   return {url: sa.url, segs, natural: sa.words / (spoken / 60)};
 });
-function speaking() { return $("speak").checked && plans.length > 0; }
+function speaking() { return voiceOn && plans.length > 0; }
 function rateFor(si) { const p = plans[si]; return p ? Math.max(MIN_RATE, Math.min(MAX_RATE, wpm / p.natural)) : 1; }
 function effectiveWpm(si) { const p = plans[si]; return p ? Math.round(p.natural * rateFor(si)) : wpm; }
 function wordAt(si, t) {
@@ -450,7 +452,7 @@ function timeOf(si, w) {
 }
 function speakNote() {
   if (!plans.length) { $("speaknote").textContent = AUDIO === null ? "The spoken version is being prepared on the server." : ""; return; }
-  if (!$("speak").checked) { $("speaknote").textContent = ""; return; }
+  if (!voiceOn) { $("speaknote").textContent = ""; return; }
   const si = tokens.length ? tokens[i].si : 0, r = rateFor(si);
   $("speaknote").textContent = r >= MAX_RATE && wpm > effectiveWpm(si) ? "Voice speed is limited to " + MAX_RATE + "× (about " + effectiveWpm(si) + " words per minute)." : "";
 }
@@ -460,11 +462,22 @@ function loop() {
   if (w !== i) { i = w; render(); }
   raf = requestAnimationFrame(loop);
 }
-function startAudio() {
-  const si = tokens[i].si;
+function loadStory(si) {
   if (audioStory !== si) { audio.src = plans[si].url; audioStory = si; }
-  const seek = () => { audio.currentTime = timeOf(si, i - starts[si]); audio.playbackRate = rateFor(si); audio.play().catch(() => stop()); };
-  if (audio.readyState >= 1) seek(); else audio.addEventListener("loadedmetadata", seek, {once: true});
+}
+function startAudio() {
+  // play() runs synchronously inside the tap/click: phones only allow sound from a user gesture.
+  const si = tokens[i].si, target = timeOf(si, i - starts[si]);
+  loadStory(si);
+  audio.defaultPlaybackRate = audio.playbackRate = rateFor(si);
+  if (audio.readyState >= 1) audio.currentTime = target;
+  else audio.addEventListener("loadedmetadata", () => { audio.currentTime = target; audio.playbackRate = rateFor(si); }, {once: true});
+  audio.play().catch(e => {
+    if (e.name === "AbortError" || !playing) return;
+    // The browser refused the sound: keep reading silently instead of stopping.
+    $("speaknote").textContent = "The browser blocked the voice. Tap Play again to hear it.";
+    cancelAnimationFrame(raf); audioStory = -1; timer = setTimeout(step, delay(tokens[i]));
+  });
   cancelAnimationFrame(raf); raf = requestAnimationFrame(loop); speakNote();
 }
 audio.addEventListener("ended", () => {
@@ -497,14 +510,23 @@ DATA.stories.forEach((s, k) => { const b = document.createElement("button"); b.i
 const link = (href, text, file) => { const a = document.createElement("a"); a.href = href; a.textContent = text; if (file) a.download = file; $("files").appendChild(a); };
 DATA.pdfs.forEach((u, k) => link(u, DATA.pdfs.length > 1 ? "PDF " + (k + 1) : "PDF"));
 if (AUDIO) link(AUDIO.day, "MP3", "briefing-" + DATA.day + ".mp3");
-$("speak").disabled = !plans.length; $("speak").checked = plans.length > 0 && store("speak") === "1";
-$("speak").onchange = () => { store("speak", $("speak").checked ? "1" : "0"); const run = playing; stop(); speakNote(); if (run) play(); };
+function setVoice(on) {
+  voiceOn = on && plans.length > 0; store("speak", voiceOn ? "1" : "0");
+  $("voice").textContent = voiceOn ? "Voice on" : "Voice off"; $("voice").setAttribute("aria-pressed", String(voiceOn));
+  if (voiceOn) loadStory(tokens.length ? tokens[i].si : 0);  // fetch ahead so the first tap starts at once
+  speakNote();
+}
+$("voice").disabled = !plans.length;
+if (!plans.length) $("voice").title = "The spoken version is being prepared on the server";
+$("voice").onclick = () => { const run = playing; stop(); setVoice(!voiceOn); if (run) play(); render(); };
+setVoice(store("speak") === "1");
 $("wpm").oninput = e => setWpm(e.target.value); $("wpmn").onchange = e => setWpm(e.target.value);
 $("play").onclick = toggle; $("back").onclick = () => jump(-10); $("fwd").onclick = () => jump(10);
 $("stage").onclick = toggle; $("ctx").onchange = render;
 document.addEventListener("keydown", e => {
   if (e.target.tagName === "INPUT" && e.target.type === "number") return;
   if (e.code === "Space") { e.preventDefault(); toggle(); }
+  else if (e.key === "v" || e.key === "V") $("voice").click();
   else if (e.key === "ArrowLeft") jump(-10); else if (e.key === "ArrowRight") jump(10);
   else if (e.key === "ArrowUp") { e.preventDefault(); setWpm(wpm + 25); } else if (e.key === "ArrowDown") { e.preventDefault(); setWpm(wpm - 25); }
 });

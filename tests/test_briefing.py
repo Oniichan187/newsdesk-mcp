@@ -126,6 +126,46 @@ def test_publish_queues_pdf_first_and_keeps_full_story(cfg, conn, clock):
     assert stored[0].impact_global and stored[1].outlook
 
 
+def test_first_message_has_an_index_with_teasers(cfg, conn, clock):
+    cfg = dataclasses.replace(cfg, briefing_pdf=True)
+    service.publish_digest(
+        conn,
+        cfg,
+        publish_input(
+            "daily-news/2026-10-03",
+            [
+                _rich("a", importance=4),
+                _rich(
+                    "b",
+                    importance=9,
+                    headline="Second distinct story headline here",
+                    key_facts=["Another unrelated fact"],
+                    teaser="Fuel prices in Austria rise by about ten cents from Monday.",
+                ),
+            ],
+        ),
+    )
+    first = json.loads(conn.execute("SELECT payload FROM outbox ORDER BY id").fetchone()[0])["content"]
+    assert "**In this briefing**" in first
+    # most important first; its teaser, and the other story's impact as fallback
+    assert first.index("**1.** Second distinct story headline here · 9/10") < first.index("**2.**")
+    assert "> Fuel prices in Austria rise by about ten cents from Monday." in first
+    assert first.count("\n> ") == 2
+
+
+def test_index_always_fits_one_message():
+    from newsrelay.publishing.formatter import briefing_payload
+
+    many = [
+        as_story(story(f"c{n}", headline=f"Very long headline number {n} " + "x" * 120, teaser="y" * 140))
+        for n in range(20)
+    ]
+    content = briefing_payload("/tmp/a.pdf", "Daily Briefing · Saturday", many, "https://r.example", 1990)[
+        "content"
+    ]
+    assert len(content) <= 1990 and "**In this briefing**" in content and "**1.**" in content
+
+
 def test_pdf_failure_never_blocks_the_stories(cfg, conn, clock, monkeypatch):
     import newsrelay.briefing.pdf as pdf_mod
 
