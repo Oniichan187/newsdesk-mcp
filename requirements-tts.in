@@ -3,3 +3,9 @@
 -c requirements.lock
 kokoro-onnx==0.6.1
 lameenc==1.8.4
+# German edition: offline en->de translation (Argos model run with CTranslate2) + Piper voice;
+# onnx only to add the phoneme-duration output to the voice model once (setup-tts.sh).
+ctranslate2==4.8.3
+sentencepiece==0.2.2
+piper-tts==1.8.0
+onnx==1.23.2

@@ -1,5 +1,5 @@
 [Unit]
-Description=News Relay spoken briefings (Kokoro TTS -> MP3 + word timings for the reader)
+Description=News Relay spoken briefings (Kokoro TTS, German edition via Argos + Piper -> MP3 + word timings for the reader)
 Documentation=file:///opt/newsrelay/current/src/docs/CUSTOMIZING.md
 After=network.target
 
@@ -44,4 +44,4 @@ RestrictSUIDSGID=yes
 LockPersonality=yes
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
-MemoryMax=1500M
+MemoryMax=2000M

@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.15.0 — 2026-10-18
+
+- **German edition on the website**: an **EN/DE** switch (key L) next to the voice button. German
+  text, speed reading, voice and MP3 ("MP3 DE"), all made on the Pi without any external service:
+  each English sentence is translated offline with the Argos Translate en->de model (run directly
+  with CTranslate2 + SentencePiece, no torch), the voice is Piper `de_DE-thorsten-medium`, patched
+  so it reports phoneme durations: German words are synced to the voice word by word, too.
+  Discord and the PDF stay English.
+- `setup-tts.sh` installs the models (SHA-256 pinned); new config `tts_german` (default true) and
+  `tts_german_voice`. The audio job renders English first, then German (`audio-de/`).
+  `newsrelay-audio.service` may use 2 GB.
+
 ## 1.14.2 — 2026-10-18
 
 - Reader: the smoothed audio clock no longer steps back when the browser's real position arrives

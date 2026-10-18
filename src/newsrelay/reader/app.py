@@ -19,7 +19,8 @@ from starlette.requests import Request
 from starlette.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
 from starlette.routing import Route
 
-from ..audio.build import audio_dir, load_timing
+from ..audio.build import audio_dir, content_hash, load_timing
+from ..audio.german import content_hash_de
 from ..briefing.pdf import MONTHS, long_date
 from ..briefing.store import day_pdfs, day_stories, days
 from ..briefing.text import reading_words
@@ -28,6 +29,7 @@ from ..database import connect
 
 _PDF_NAME = re.compile(r"^briefing-\d{4}-\d{2}-\d{2}-[a-z0-9-]{1,40}\.pdf$")
 _MP3_NAME = re.compile(r"^(day|story-\d{2})\.mp3$")
+_LANGS = {"audio": "en", "audio-de": "de"}
 PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174"
 PDFJS_SRI = "sha512-q+4liFwdPC/bNdhUpZx6aXDx/h77yEQtn4I1slHydcbZK34nLaR3cAeYSJshoxIOq3mjEf7xJE8YWIUHMn+oCQ=="
 PDFJS_WORKER_SRI = (
@@ -70,12 +72,13 @@ def _count(n: int) -> str:
     return f"{n} {'story' if n == 1 else 'stories'}"
 
 
-def _audio(cfg: Config, d: date) -> dict[str, Any] | None:
+def _audio(cfg: Config, d: date, lang: str = "en", t: dict[str, Any] | None = None) -> dict[str, Any] | None:
     """Timing data with URLs for the reader, or None while the audio is not rendered yet."""
-    t = load_timing(cfg, d)
-    if not t or not (audio_dir(cfg, d) / "day.mp3").is_file():
+    t = t or load_timing(cfg, d, lang)
+    folder = audio_dir(cfg, d, lang)
+    if not t or not (folder / "day.mp3").is_file():
         return None
-    base = f"/day/{d.isoformat()}/audio/"
+    base = f"/day/{d.isoformat()}/{folder.name}/"
     return {
         "day": base + "day.mp3",
         "stories": [
@@ -90,6 +93,24 @@ def _audio(cfg: Config, d: date) -> dict[str, Any] | None:
     }
 
 
+def _german(cfg: Config, d: date, stories: list[Any], data: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The German edition (text + voice) when it was rendered for exactly these stories."""
+    t = load_timing(cfg, d, "de")
+    if not t or t.get("content") != content_hash_de(content_hash(stories, cfg), cfg):
+        return None
+    texts = t.get("text") or []
+    audio = _audio(cfg, d, "de", t)
+    if audio is None or len(texts) != len(data) or len(audio["stories"]) != len(data):
+        return None
+    return {
+        "stories": [
+            {"headline": x["headline"], "meta": s["meta"], "words": x["words"]}
+            for x, s in zip(texts, data, strict=True)
+        ],
+        "audio": audio,
+    }
+
+
 def _day_row(cfg: Config, d: date, n: int) -> str:
     weekday, _ = long_date(d)
     iso = d.isoformat()
@@ -100,6 +121,11 @@ def _day_row(cfg: Config, d: date, n: int) -> str:
         mp3 = f'<a class="ghost" href="/day/{iso}/audio/day.mp3" download="briefing-{iso}.mp3">MP3</a>'
     else:
         mp3 = '<span class="ghost off" title="The spoken version is being prepared">MP3</span>'
+    if (audio_dir(cfg, d, "de") / "day.mp3").is_file():
+        mp3 += (
+            f'<a class="ghost" href="/day/{iso}/audio-de/day.mp3" download="briefing-{iso}-de.mp3"'
+            ' title="German spoken version" translate="no">MP3 DE</a>'
+        )
     return (
         f'<li><div><div class="date">{weekday}, {d.day} {MONTHS[d.month - 1]}</div>'
         f'<div class="muted">{_count(n)}</div></div>'
@@ -183,7 +209,14 @@ def create_reader_app(cfg: Config) -> Starlette:
         if audio and len(audio["stories"]) != len(data):
             audio = None  # stories changed since the audio was rendered; a new render is pending
         payload = json.dumps(
-            {"day": d.isoformat(), "stories": data, "pdfs": pdfs, "audio": audio}, ensure_ascii=False
+            {
+                "day": d.isoformat(),
+                "stories": data,
+                "pdfs": pdfs,
+                "audio": audio,
+                "de": _german(cfg, d, stories, data),
+            },
+            ensure_ascii=False,
         )
         page = (
             _page(READER_HTML)
@@ -205,13 +238,17 @@ def create_reader_app(cfg: Config) -> Starlette:
     async def mp3(req: Request) -> Response:
         d = _day(req.path_params["day"])
         name = req.path_params["name"]
-        if d is None or not _MP3_NAME.match(name):
+        lang = _LANGS.get(req.path_params["folder"])
+        if d is None or lang is None or not _MP3_NAME.match(name):
             return PlainTextResponse("not found", status_code=404)
-        path = audio_dir(cfg, d) / name
+        path = audio_dir(cfg, d, lang) / name
         if not path.is_file():
             return PlainTextResponse("not found", status_code=404)
+        suffix = "" if lang == "en" else f"-{lang}"
         filename = (
-            f"briefing-{d.isoformat()}.mp3" if name == "day.mp3" else f"briefing-{d.isoformat()}-{name}"
+            f"briefing-{d.isoformat()}{suffix}.mp3"
+            if name == "day.mp3"
+            else f"briefing-{d.isoformat()}{suffix}-{name}"
         )
         return FileResponse(
             path,
@@ -229,7 +266,7 @@ def create_reader_app(cfg: Config) -> Starlette:
             Route("/", index),
             Route("/day/{day}", day_page),
             Route("/day/{day}/pdf/{name}", pdf),
-            Route("/day/{day}/audio/{name}", mp3),
+            Route("/day/{day}/{folder}/{name}", mp3),
             Route("/healthz", healthz),
         ]
     )
@@ -330,7 +367,9 @@ mask-image:linear-gradient(270deg,transparent,#000 55%)}
 .controls button{font:inherit;font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--ink);
 border-radius:999px;padding:10px 18px;min-width:64px;cursor:pointer}
 .controls button.play{background:var(--accent);border-color:var(--accent);color:var(--bg);min-width:110px}
-.controls{flex-wrap:wrap}.controls button.voice[aria-pressed=true]{border-color:var(--accent);color:var(--accent);
+.controls{flex-wrap:wrap}.langs{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+.controls .langs button{border:0;border-radius:0;min-width:46px;padding-left:12px;padding-right:12px}
+.controls .langs button[aria-pressed=true]{background:var(--accent);color:var(--bg)}.controls button.voice[aria-pressed=true]{border-color:var(--accent);color:var(--accent);
 box-shadow:0 0 0 1px var(--accent) inset}.controls button:disabled{opacity:.45;cursor:default}
 .speed{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
 .speed .row{display:flex;align-items:center;gap:12px}
@@ -360,7 +399,8 @@ box-shadow:0 1px 2px rgba(0,0,0,.08),0 4px 18px rgba(0,0,0,.06)}
 <div class="controls"><button id="back" title="Back 10 words (Left)">Back</button>
 <button id="play" class="play" title="Play / pause (Space)">Play</button>
 <button id="fwd" title="Forward 10 words (Right)">Next</button>
-<button id="voice" class="voice" aria-pressed="false" title="Voice on/off (V) — follows the words per minute">Voice off</button></div>
+<button id="voice" class="voice" aria-pressed="false" title="Voice on/off (V) — follows the words per minute">Voice off</button>
+<span class="langs" id="langs" translate="no"><button id="lang-en" aria-pressed="true" title="English">EN</button><button id="lang-de" aria-pressed="false" title="Deutsch (L)">DE</button></span></div>
 <section class="speed"><div class="row"><label for="wpm">Words per minute</label>
 <input type="range" id="wpm" min="100" max="2000" step="10">
 <input type="number" id="wpmn" min="100" max="2000" step="10" aria-label="Words per minute"></div>
@@ -368,16 +408,25 @@ box-shadow:0 1px 2px rgba(0,0,0,.08),0 4px 18px rgba(0,0,0,.06)}
 <div class="opts"><label><input type="checkbox" id="ctx" checked> Show neighbouring words</label>
 <label><input type="checkbox" id="pause" checked> Pause longer at punctuation</label>
 <span class="note" id="speaknote"></span></div></section>
-<p class="hint">Space: play/pause · V: voice on/off · Left/Right: 10 words · Up/Down: speed ±25 · Tap the word to play or pause.</p>
+<p class="hint">Space: play/pause · V: voice on/off · L: English/Deutsch · Left/Right: 10 words · Up/Down: speed ±25 · Tap the word to play or pause.</p>
 <section class="doc" id="doc" hidden><h2>Read the PDF</h2><p class="muted" id="docnote">Loading…</p><div class="pages" id="pages"></div></section>
 </main>
 <script>
 const DATA = {{DATA}};
 const $ = id => document.getElementById(id);
 const store = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } };
-const tokens = []; const starts = [];
-DATA.stories.forEach((s, si) => { starts.push(tokens.length); s.words.forEach(([label, w], wi) => tokens.push({si, label, w, first: wi === 0})); });
-let i = Math.min(+(store("pos:" + DATA.day) || 0), Math.max(0, tokens.length - 1));
+// Two editions of the day: English (always) and German (when rendered on the server).
+const EDITIONS = {en: {stories: DATA.stories, audio: DATA.audio}};
+if (DATA.de) EDITIONS.de = DATA.de;
+let lang = EDITIONS[store("lang")] ? store("lang") : "en", ED = EDITIONS[lang];
+let tokens = [], starts = [];
+function buildTokens() {
+  tokens = []; starts = [];
+  ED.stories.forEach((s, si) => { starts.push(tokens.length); s.words.forEach(([label, w], wi) => tokens.push({si, label, w, first: wi === 0})); });
+}
+buildTokens();
+const posKey = () => "pos:" + DATA.day + (lang === "en" ? "" : ":" + lang);
+let i = Math.min(+(store(posKey()) || 0), Math.max(0, tokens.length - 1));
 let wpm = Math.max(100, Math.min(2000, +(store("wpm") || 350)));
 let timer = null, playing = false, voiceOn = false;
 
@@ -406,38 +455,40 @@ function context(at) {
 }
 function render() {
   if (!tokens.length) { $("headline").textContent = "No stories for this day."; return; }
-  const t = tokens[i], s = DATA.stories[t.si];
+  const t = tokens[i], s = ED.stories[t.si];
   const [a, b, c] = splitWord(t.w);
   $("pre").textContent = a; $("piv").textContent = b; $("post").textContent = c;
   const [left, right] = context(i); $("ctxl").textContent = left; $("ctxr").textContent = right;
   $("label").textContent = t.label; $("meta").textContent = s.meta; $("headline").textContent = s.headline;
   $("bar").style.width = (100 * (i + 1) / tokens.length) + "%";
-  $("pos").textContent = "Story " + (t.si + 1) + " of " + DATA.stories.length + " · word " + (i + 1) + " of " + tokens.length;
+  $("pos").textContent = "Story " + (t.si + 1) + " of " + ED.stories.length + " · word " + (i + 1) + " of " + tokens.length;
   const eff = speaking() ? effectiveWpm(t.si) : wpm;
   const mins = (tokens.length - i) / eff; $("left").textContent = mins < 1 ? Math.ceil(mins * 60) + " s left" : Math.ceil(mins) + " min left";
   if (t.si !== shownStory) {
     shownStory = t.si;
     document.querySelectorAll(".stories button").forEach((el, k) => el.classList.toggle("on", k === t.si));
   }
-  if (!playing) store("pos:" + DATA.day, i);
+  if (!playing) store(posKey(), i);
 }
 let shownStory = -1;
 
 // ---- read aloud: the audio clock drives the words ----------------------------------------------
-const AUDIO = DATA.audio; const audio = new Audio(); audio.preload = "auto"; audio.preservesPitch = true;
+const audio = new Audio(); audio.preload = "auto"; audio.preservesPitch = true;
 let audioStory = -1, raf = 0;
 const MAX_RATE = 4, MIN_RATE = 0.5;
-const plans = (AUDIO ? AUDIO.stories : []).map((sa, si) => {
+let plans = [];
+const buildPlans = () => (ED.audio ? ED.audio.stories : []).map((sa, si) => {
   // per segment: cumulative character weights of its words, for positions inside a sentence
   const segs = sa.segments.map(([t0, t1, w0, w1, at]) => {
     // at = when each word starts (from the voice itself); older days only know the sentence
     const lens = []; let acc = 0;
-    for (let k = w0; k < w1; k++) { acc += (DATA.stories[si].words[k] || ["", ""])[1].length + 1; lens.push(acc); }
+    for (let k = w0; k < w1; k++) { acc += (ED.stories[si].words[k] || ["", ""])[1].length + 1; lens.push(acc); }
     return {t0, t1, w0, w1, lens, total: acc || 1, at: Array.isArray(at) && at.length === w1 - w0 ? at : null};
   });
   const spoken = segs.reduce((n, s) => n + (s.t1 - s.t0), 0) || 1;
   return {url: sa.url, segs, natural: sa.words / (spoken / 60)};
 });
+plans = buildPlans();
 function speaking() { return voiceOn && plans.length > 0; }
 function rateFor(si) { const p = plans[si]; return p ? Math.max(MIN_RATE, Math.min(MAX_RATE, wpm / p.natural)) : 1; }
 function effectiveWpm(si) { const p = plans[si]; return p ? Math.round(p.natural * rateFor(si)) : wpm; }
@@ -462,7 +513,7 @@ function timeOf(si, w) {
   const next = p.segs.find(s => s.w0 >= w); return next ? next.t0 : 0;
 }
 function speakNote() {
-  if (!plans.length) { $("speaknote").textContent = AUDIO === null ? "The spoken version is being prepared on the server." : ""; return; }
+  if (!plans.length) { $("speaknote").textContent = ED.audio === null ? "The spoken version is being prepared on the server." : ""; return; }
   if (!voiceOn) { $("speaknote").textContent = ""; return; }
   const si = tokens.length ? tokens[i].si : 0, r = rateFor(si);
   $("speaknote").textContent = r >= MAX_RATE && wpm > effectiveWpm(si) ? "Voice speed is limited to " + MAX_RATE + "× (about " + effectiveWpm(si) + " words per minute)." : "";
@@ -507,7 +558,7 @@ function startAudio() {
 }
 audio.addEventListener("ended", () => {
   const next = audioStory + 1; cancelAnimationFrame(raf);
-  if (playing && next < DATA.stories.length) { i = starts[next]; render(); startAudio(); } else stop();
+  if (playing && next < ED.stories.length) { i = starts[next]; render(); startAudio(); } else stop();
 });
 
 // ---- transport ---------------------------------------------------------------------------------
@@ -520,7 +571,7 @@ function play() {
   playing = true; $("play").textContent = "Pause"; render();
   if (speaking()) startAudio(); else timer = setTimeout(step, delay(tokens[i]));
 }
-function stop() { playing = false; clearTimeout(timer); timer = null; cancelAnimationFrame(raf); audio.pause(); $("play").textContent = "Play"; store("pos:" + DATA.day, i); }
+function stop() { playing = false; clearTimeout(timer); timer = null; cancelAnimationFrame(raf); audio.pause(); $("play").textContent = "Play"; store(posKey(), i); }
 function toggle() { playing ? stop() : play(); }
 function jump(n) { const run = playing; stop(); i = Math.max(0, Math.min(tokens.length - 1, i + n)); render(); if (run) play(); }
 function setWpm(v) {
@@ -530,21 +581,48 @@ function setWpm(v) {
   speakNote(); render();
 }
 
-DATA.stories.forEach((s, k) => { const b = document.createElement("button"); b.innerHTML = '<b class="notranslate" translate="no">' + String(k + 1).padStart(2, "0") + '</b>'; b.appendChild(document.createTextNode(s.headline)); b.onclick = () => { const run = playing; stop(); i = starts[k]; render(); if (run) play(); }; $("stories").appendChild(b); });
+function buildStoryButtons() {
+  $("stories").replaceChildren(); shownStory = -1;
+  ED.stories.forEach((s, k) => { const b = document.createElement("button"); b.innerHTML = '<b class="notranslate" translate="no">' + String(k + 1).padStart(2, "0") + '</b>'; b.appendChild(document.createTextNode(s.headline)); b.onclick = () => { const run = playing; stop(); i = starts[k]; render(); if (run) play(); }; $("stories").appendChild(b); });
+  // the German headlines are already German: keep the page translator off them
+  $("stories").classList.toggle("notranslate", lang !== "en"); $("stories").translate = lang === "en";
+}
+buildStoryButtons();
 [200, 300, 400, 500, 700, 1000, 1500, 2000].forEach(v => { const b = document.createElement("button"); b.textContent = v; b.onclick = () => setWpm(v); $("presets").appendChild(b); });
 const link = (href, text, file) => { const a = document.createElement("a"); a.href = href; a.textContent = text; if (file) a.download = file; $("files").appendChild(a); };
 DATA.pdfs.forEach((u, k) => link(u, DATA.pdfs.length > 1 ? "PDF " + (k + 1) : "PDF"));
-if (AUDIO) link(AUDIO.day, "MP3", "briefing-" + DATA.day + ".mp3");
+if (DATA.audio) link(DATA.audio.day, "MP3", "briefing-" + DATA.day + ".mp3");
+if (DATA.de) link(DATA.de.audio.day, "MP3 DE", "briefing-" + DATA.day + "-de.mp3");
 function setVoice(on) {
-  voiceOn = on && plans.length > 0; store("speak", voiceOn ? "1" : "0");
+  voiceOn = on && plans.length > 0;
   $("voice").textContent = voiceOn ? "Voice on" : "Voice off"; $("voice").setAttribute("aria-pressed", String(voiceOn));
   if (voiceOn) loadStory(tokens.length ? tokens[i].si : 0);  // fetch ahead so the first tap starts at once
   speakNote();
 }
-$("voice").disabled = !plans.length;
-if (!plans.length) $("voice").title = "The spoken version is being prepared on the server";
-$("voice").onclick = () => { const run = playing; stop(); setVoice(!voiceOn); if (run) play(); render(); };
-setVoice(store("speak") === "1");
+let wantVoice = store("speak") === "1";
+function voiceButton() {
+  $("voice").disabled = !plans.length;
+  $("voice").title = plans.length ? "Voice on/off (V) — follows the words per minute" : "The spoken version is being prepared on the server";
+}
+$("voice").onclick = () => { const run = playing; stop(); wantVoice = !voiceOn; store("speak", wantVoice ? "1" : "0"); setVoice(wantVoice); if (run) play(); render(); };
+// Switch edition: same story, same share of it read, voice kept on if this edition has one.
+function setLang(l) {
+  if (!EDITIONS[l] || (l === lang && tokens.length)) return;
+  const run = playing; stop();
+  const t = tokens[i], si = t ? t.si : 0, share = t ? (i - starts[si]) / Math.max(1, (starts[si + 1] ?? tokens.length) - starts[si]) : 0;
+  lang = l; ED = EDITIONS[l]; store("lang", l);
+  buildTokens(); plans = buildPlans(); audioStory = -1; audio.removeAttribute("src");
+  const s2 = Math.min(si, starts.length - 1), len = (starts[s2 + 1] ?? tokens.length) - starts[s2];
+  i = Math.max(0, Math.min(tokens.length - 1, starts[s2] + Math.floor(share * len)));
+  buildStoryButtons(); voiceButton(); setVoice(wantVoice);
+  document.querySelectorAll("#langs button").forEach(b => b.setAttribute("aria-pressed", String(b.id === "lang-" + l)));
+  document.documentElement.lang = l;
+  render(); if (run) play();
+}
+$("lang-en").onclick = () => setLang("en"); $("lang-de").onclick = () => setLang("de");
+if (!EDITIONS.de) { $("lang-de").disabled = true; $("lang-de").title = "The German version is being prepared on the server"; }
+document.querySelectorAll("#langs button").forEach(b => b.setAttribute("aria-pressed", String(b.id === "lang-" + lang)));
+voiceButton(); setVoice(wantVoice);
 $("wpm").oninput = e => setWpm(e.target.value); $("wpmn").onchange = e => setWpm(e.target.value);
 $("play").onclick = toggle; $("back").onclick = () => jump(-10); $("fwd").onclick = () => jump(10);
 $("stage").onclick = toggle; $("ctx").onchange = render;
@@ -552,6 +630,7 @@ document.addEventListener("keydown", e => {
   if (e.target.tagName === "INPUT" && e.target.type === "number") return;
   if (e.code === "Space") { e.preventDefault(); toggle(); }
   else if (e.key === "v" || e.key === "V") $("voice").click();
+  else if (e.key === "l" || e.key === "L") setLang(lang === "en" ? "de" : "en");
   else if (e.key === "ArrowLeft") jump(-10); else if (e.key === "ArrowRight") jump(10);
   else if (e.key === "ArrowUp") { e.preventDefault(); setWpm(wpm + 25); } else if (e.key === "ArrowDown") { e.preventDefault(); setWpm(wpm - 25); }
 });

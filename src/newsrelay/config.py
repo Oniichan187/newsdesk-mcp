@@ -81,6 +81,10 @@ class Config:
     tts_lang: str = "en-us"
     tts_speed: float = 1.0
     tts_threads: int = 3
+    # German edition on the website: offline translation (Argos en->de) + Piper voice; used when
+    # setup-tts.sh installed the models.
+    tts_german: bool = True
+    tts_german_voice: str = "de_DE-thorsten-medium"
     # Country the readers live in; labels the "Impact <country>" line. Keep it equal to the
     # --country the task prompt was built with.
     reader_country: str = "Austria"

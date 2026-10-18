@@ -20,6 +20,7 @@ import re
 import shutil
 import sqlite3
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
@@ -211,13 +212,13 @@ def kokoro_synth(cfg: Config) -> Synth:
     return synth
 
 
-def audio_dir(cfg: Config, day: date) -> Path:
-    return cfg.briefing_dir / day.isoformat() / "audio"
+def audio_dir(cfg: Config, day: date, lang: str = "en") -> Path:
+    return cfg.briefing_dir / day.isoformat() / ("audio" if lang == "en" else f"audio-{lang}")
 
 
-def load_timing(cfg: Config, day: date) -> dict[str, Any] | None:
+def load_timing(cfg: Config, day: date, lang: str = "en") -> dict[str, Any] | None:
     try:
-        data = json.loads((audio_dir(cfg, day) / "timing.json").read_text(encoding="utf-8"))
+        data = json.loads((audio_dir(cfg, day, lang) / "timing.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     return data if isinstance(data, dict) else None
@@ -235,32 +236,28 @@ def _current(old: dict[str, Any] | None, digest: str) -> bool:
     return bool(old) and old.get("content") == digest and old.get("version", 1) >= TIMING_VERSION  # type: ignore[union-attr]
 
 
-def build_day(cfg: Config, conn: sqlite3.Connection, day: date, synth: Synth | None = None) -> bool:
-    """Render the day's audio if missing or outdated. Returns True when something was written."""
-    stories = day_stories(conn, cfg, day)
-    if not stories:
-        return False
-    digest = content_hash(stories, cfg)
-    old = load_timing(cfg, day)
-    if _current(old, digest):
-        return False
-    synth = synth or kokoro_synth(cfg)
+def write_day(
+    target: Path,
+    plans: list[StoryAudio],
+    synth: Synth,
+    intro: str,
+    cue: Callable[[int], str],
+    extra: dict[str, Any],
+    day: date,
+) -> None:
+    """Synthesise the stories' plans into story-NN.mp3, day.mp3 and timing.json (atomically)."""
     import numpy as np
 
-    weekday, long = long_date(day)
-    target = audio_dir(cfg, day)
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = Path(tempfile.mkdtemp(prefix=".audio-", dir=target.parent))
     try:
-        intro = _samples(synth(f"Daily briefing for {weekday}, {long}."))
-        day_parts: list[Any] = [intro, _silence(PAUSE_STORY)]
+        day_parts: list[Any] = [_samples(synth(intro)), _silence(PAUSE_STORY)]
         meta: list[dict[str, Any]] = []
-        for n, st in enumerate(stories, 1):
+        for n, sa in enumerate(plans, 1):
             if n > 1:
                 day_parts.append(_silence(PAUSE_STORY))
-            day_parts.append(_samples(synth(f"Story {n}.")))
+            day_parts.append(_samples(synth(cue(n))))
             day_parts.append(_silence(PAUSE_LABEL))
-            sa = plan(st, cfg.reader_country)
             samples = render_story(sa, synth)
             name = f"story-{n:02d}.mp3"
             encode_mp3(samples, tmp / name)
@@ -278,6 +275,7 @@ def build_day(cfg: Config, conn: sqlite3.Connection, day: date, synth: Synth | N
                 logging.INFO,
                 "story audio",
                 day=day.isoformat(),
+                dir=target.name,
                 story=n,
                 seconds=meta[-1]["duration"],
             )
@@ -285,34 +283,99 @@ def build_day(cfg: Config, conn: sqlite3.Connection, day: date, synth: Synth | N
         encode_mp3(whole, tmp / "day.mp3")
         timing = {
             "version": TIMING_VERSION,
-            "content": digest,
-            "voice": cfg.tts_voice,
+            **extra,
             "day": {"file": "day.mp3", "duration": round(len(whole) / SAMPLE_RATE, 3)},
             "stories": meta,
         }
-        (tmp / "timing.json").write_text(json.dumps(timing), encoding="utf-8")
+        (tmp / "timing.json").write_text(json.dumps(timing, ensure_ascii=False), encoding="utf-8")
         if target.exists():
             shutil.rmtree(target)
         tmp.replace(target)
     finally:
         if tmp.exists():
             shutil.rmtree(tmp, ignore_errors=True)
+
+
+def build_day(cfg: Config, conn: sqlite3.Connection, day: date, synth: Synth | None = None) -> bool:
+    """Render the day's audio if missing or outdated. Returns True when something was written."""
+    stories = day_stories(conn, cfg, day)
+    if not stories:
+        return False
+    digest = content_hash(stories, cfg)
+    if _current(load_timing(cfg, day), digest):
+        return False
+    synth = synth or kokoro_synth(cfg)
+    weekday, long = long_date(day)
+    write_day(
+        audio_dir(cfg, day),
+        [plan(st, cfg.reader_country) for st in stories],
+        synth,
+        f"Daily briefing for {weekday}, {long}.",
+        lambda n: f"Story {n}.",
+        {"content": digest, "voice": cfg.tts_voice},
+        day,
+    )
     log(logger, logging.INFO, "day audio written", day=day.isoformat(), stories=len(stories))
     return True
 
 
+def build_day_de(
+    cfg: Config,
+    conn: sqlite3.Connection,
+    day: date,
+    translate: Callable[[list[str]], list[str]],
+    synth: Synth,
+) -> bool:
+    """German text + voice for the reader; written next to the English audio as audio-de/."""
+    from .german import content_hash_de, german_day, long_date_de
+
+    stories = day_stories(conn, cfg, day)
+    if not stories:
+        return False
+    digest = content_hash_de(content_hash(stories, cfg), cfg)
+    if _current(load_timing(cfg, day, "de"), digest):
+        return False
+    texts, plans = german_day(stories, cfg, translate)
+    weekday, long = long_date_de(day)
+    write_day(
+        audio_dir(cfg, day, "de"),
+        plans,
+        synth,
+        f"Tagesbriefing für {weekday}, den {long}.",
+        lambda n: f"Meldung {n}.",
+        {"content": digest, "voice": cfg.tts_german_voice, "text": texts},
+        day,
+    )
+    log(logger, logging.INFO, "day audio written", day=day.isoformat(), stories=len(stories), lang="de")
+    return True
+
+
 def run(cfg: Config, conn: sqlite3.Connection, days_back: int = 2, only: date | None = None) -> int:
-    """Render missing/outdated audio for the last `days_back` days (newest first)."""
+    """Render missing/outdated audio for the last `days_back` days (newest first): English for all
+    days first, then the German edition (if its models are installed)."""
+    from . import german
+
     today = local_day(timeutil.now(), cfg.display_timezone)
     days = [only] if only else [today - timedelta(days=i) for i in range(days_back + 1)]
     synth: Synth | None = None
     done = 0
+    todo_de: list[date] = []
     for d in days:
         stories = day_stories(conn, cfg, d)
         if not stories:
             continue
-        if _current(load_timing(cfg, d), content_hash(stories, cfg)):
-            continue
-        synth = synth or kokoro_synth(cfg)
-        done += int(build_day(cfg, conn, d, synth))
+        digest = content_hash(stories, cfg)
+        if not _current(load_timing(cfg, d), digest):
+            synth = synth or kokoro_synth(cfg)
+            done += int(build_day(cfg, conn, d, synth))
+        if german.available(cfg) and not _current(
+            load_timing(cfg, d, "de"), german.content_hash_de(digest, cfg)
+        ):
+            todo_de.append(d)
+    if todo_de:
+        synth = None  # free the English voice before loading the German one
+        translate = german.argos_translator(cfg)
+        synth_de = german.piper_synth(cfg)
+        for d in todo_de:
+            done += int(build_day_de(cfg, conn, d, translate, synth_de))
     return done
