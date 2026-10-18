@@ -1,9 +1,11 @@
 """Turn a day's stories into speech.
 
 The spoken text is exactly the reader's word list (`reading_words`), cut into sentences. Every
-sentence is synthesised separately, so its start and end time are known; the reader maps a word to
-the audio clock by its position inside the sentence. Section labels ("Key facts", "Impact Austria")
-are spoken as short cues of their own.
+sentence is synthesised separately, so its start and end time are known. Kokoro also reports when
+each phoneme is spoken; grouped into words, that gives every word its own start time (timing version
+2). Where that grouping does not line up with the text, the reader falls back to the word's position
+inside the sentence. Section labels ("Key facts", "Impact Austria") are spoken as short cues of their
+own.
 
 Output per day (in briefing_dir/<day>/audio/): story-NN.mp3, day.mp3 and timing.json. timing.json
 carries a hash of the spoken content and the voice, so a day is only re-rendered when it changed.
@@ -38,10 +40,61 @@ PAUSE_LABEL = 0.45
 PAUSE_STORY = 1.2
 MAX_SEGMENT_WORDS = 38
 _END = re.compile(r"[.!?:;][\"'”’)\]]*$")
+_SPOKEN = re.compile(r"\w")
+TIMING_VERSION = 2
+
+
+@dataclass
+class Spoken:
+    samples: Any
+    word_starts: list[float] | None = None  # seconds into `samples`, one per space-separated word
 
 
 class Synth(Protocol):
-    def __call__(self, text: str) -> Any: ...  # -> 1-D float32 numpy array at SAMPLE_RATE
+    # -> 1-D float32 numpy array at SAMPLE_RATE, or Spoken with per-word start times
+    def __call__(self, text: str) -> Any: ...
+
+
+def _samples(out: Any) -> Any:
+    import numpy as np
+
+    return np.asarray(out.samples if isinstance(out, Spoken) else out, dtype=np.float32).reshape(-1)
+
+
+def word_starts(phonemes: list[tuple[str, float]], counts: list[int]) -> list[float] | None:
+    """Start time of each text word from (phoneme, start) pairs.
+
+    `counts` = how many spoken phoneme words each text word becomes ("1,600" -> 3, "—" -> 0).
+    Returns None when the phoneme words do not add up to the text, so nothing is guessed.
+    """
+    groups: list[float] = []
+    current = ""
+    start = 0.0
+    for ph, t in [*phonemes, (" ", 0.0)]:
+        if ph == " ":
+            if _SPOKEN.search(current):
+                groups.append(start)
+            current = ""
+            continue
+        if not current:
+            start = t
+        current += ph
+    if len(groups) != sum(counts) or not groups:
+        return None
+    out: list[float | None] = []
+    k = 0
+    for c in counts:
+        out.append(groups[k] if c else None)
+        k += c
+    nxt = groups[-1]
+    for i in range(len(out) - 1, -1, -1):  # silent words ("—") take the next word's start
+        if out[i] is None:
+            out[i] = nxt
+        nxt = out[i]  # type: ignore[assignment]
+    starts = [float(x) for x in out]  # type: ignore[arg-type]
+    for i in range(1, len(starts)):
+        starts[i] = max(starts[i], starts[i - 1])
+    return starts
 
 
 @dataclass
@@ -51,6 +104,7 @@ class Segment:
     w1: int | None = None  # exclusive
     t0: float = 0.0
     t1: float = 0.0
+    starts: list[float] | None = None  # per word, seconds from the start of the story audio
 
 
 @dataclass
@@ -101,8 +155,12 @@ def render_story(st: StoryAudio, synth: Synth) -> Any:
     parts: list[Any] = []
     t = 0.0
     for seg in st.segments:
-        samples = np.asarray(synth(seg.text), dtype=np.float32).reshape(-1)
+        out = synth(seg.text)
+        samples = _samples(out)
         seg.t0, seg.t1 = t, t + len(samples) / SAMPLE_RATE
+        rel = out.word_starts if isinstance(out, Spoken) else None
+        if seg.w0 is not None and seg.w1 is not None and rel and len(rel) == seg.w1 - seg.w0:
+            seg.starts = [t + min(x, seg.t1 - t) for x in rel]
         pause = _silence(PAUSE_LABEL if seg.w0 is None else PAUSE_SENTENCE)
         parts += [samples, pause]
         t = seg.t1 + len(pause) / SAMPLE_RATE
@@ -134,11 +192,21 @@ def kokoro_synth(cfg: Config) -> Synth:
     session = ort.InferenceSession(str(model), sess_options=opts, providers=["CPUExecutionProvider"])
     kokoro = Kokoro.from_session(session, str(voices))
 
+    def spoken_words(word: str) -> int:
+        return sum(1 for p in kokoro.tokenizer.phonemize(word, cfg.tts_lang).split(" ") if _SPOKEN.search(p))
+
     def synth(text: str) -> Any:
-        samples, sr = kokoro.create(text, voice=cfg.tts_voice, speed=cfg.tts_speed, lang=cfg.tts_lang)
+        samples, sr, timed = kokoro.create_timed(
+            text, voice=cfg.tts_voice, speed=cfg.tts_speed, lang=cfg.tts_lang
+        )
         if sr != SAMPLE_RATE:
             raise RuntimeError(f"unexpected sample rate {sr}")
-        return samples
+        starts = None
+        if timed:
+            starts = word_starts(
+                [(x.phoneme, x.start) for x in timed], [spoken_words(w) for w in text.split(" ")]
+            )
+        return Spoken(samples, starts)
 
     return synth
 
@@ -155,6 +223,18 @@ def load_timing(cfg: Config, day: date) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
+def _segment_json(s: Segment) -> list[Any]:
+    row: list[Any] = [round(s.t0, 3), round(s.t1, 3), s.w0, s.w1]
+    if s.starts:
+        row.append([round(x, 3) for x in s.starts])
+    return row
+
+
+def _current(old: dict[str, Any] | None, digest: str) -> bool:
+    """Audio exists for this content and already has per-word timings."""
+    return bool(old) and old.get("content") == digest and old.get("version", 1) >= TIMING_VERSION  # type: ignore[union-attr]
+
+
 def build_day(cfg: Config, conn: sqlite3.Connection, day: date, synth: Synth | None = None) -> bool:
     """Render the day's audio if missing or outdated. Returns True when something was written."""
     stories = day_stories(conn, cfg, day)
@@ -162,7 +242,7 @@ def build_day(cfg: Config, conn: sqlite3.Connection, day: date, synth: Synth | N
         return False
     digest = content_hash(stories, cfg)
     old = load_timing(cfg, day)
-    if old and old.get("content") == digest:
+    if _current(old, digest):
         return False
     synth = synth or kokoro_synth(cfg)
     import numpy as np
@@ -172,13 +252,13 @@ def build_day(cfg: Config, conn: sqlite3.Connection, day: date, synth: Synth | N
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = Path(tempfile.mkdtemp(prefix=".audio-", dir=target.parent))
     try:
-        intro = np.asarray(synth(f"Daily briefing for {weekday}, {long}."), dtype=np.float32)
+        intro = _samples(synth(f"Daily briefing for {weekday}, {long}."))
         day_parts: list[Any] = [intro, _silence(PAUSE_STORY)]
         meta: list[dict[str, Any]] = []
         for n, st in enumerate(stories, 1):
             if n > 1:
                 day_parts.append(_silence(PAUSE_STORY))
-            day_parts.append(np.asarray(synth(f"Story {n}."), dtype=np.float32))
+            day_parts.append(_samples(synth(f"Story {n}.")))
             day_parts.append(_silence(PAUSE_LABEL))
             sa = plan(st, cfg.reader_country)
             samples = render_story(sa, synth)
@@ -190,9 +270,7 @@ def build_day(cfg: Config, conn: sqlite3.Connection, day: date, synth: Synth | N
                     "file": name,
                     "duration": round(len(samples) / SAMPLE_RATE, 3),
                     "words": sa.words,
-                    "segments": [
-                        [round(s.t0, 3), round(s.t1, 3), s.w0, s.w1] for s in sa.segments if s.w0 is not None
-                    ],
+                    "segments": [_segment_json(s) for s in sa.segments if s.w0 is not None],
                 }
             )
             log(
@@ -206,7 +284,7 @@ def build_day(cfg: Config, conn: sqlite3.Connection, day: date, synth: Synth | N
         whole = np.concatenate(day_parts)
         encode_mp3(whole, tmp / "day.mp3")
         timing = {
-            "version": 1,
+            "version": TIMING_VERSION,
             "content": digest,
             "voice": cfg.tts_voice,
             "day": {"file": "day.mp3", "duration": round(len(whole) / SAMPLE_RATE, 3)},
@@ -233,8 +311,7 @@ def run(cfg: Config, conn: sqlite3.Connection, days_back: int = 2, only: date | 
         stories = day_stories(conn, cfg, d)
         if not stories:
             continue
-        old = load_timing(cfg, d)
-        if old and old.get("content") == content_hash(stories, cfg):
+        if _current(load_timing(cfg, d), content_hash(stories, cfg)):
             continue
         synth = synth or kokoro_synth(cfg)
         done += int(build_day(cfg, conn, d, synth))

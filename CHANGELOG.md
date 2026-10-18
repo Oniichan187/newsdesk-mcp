@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.14.1 — 2026-10-18
+
+- **Voice and words in sync**: every word now gets its real start time from the voice (Kokoro's
+  phoneme durations, grouped into words; timing.json version 2). Before, a word's time was guessed
+  from its position in the sentence, which drifted on numbers ("€4.2", "1,600") and long words.
+  Days rendered before keep the old estimate; the last days are rendered again automatically.
+- Reader: the audio clock runs on smoothly between the browser's coarse `currentTime` updates
+  (words jumped and lagged at 2–4x speed); the reading position is saved on pause instead of on
+  every word.
+
 ## 1.14.0 — 2026-10-18
 
 - **Index in the first Discord message**: the message with the PDF now lists the day's stories

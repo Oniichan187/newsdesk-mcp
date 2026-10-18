@@ -76,6 +76,54 @@ def test_build_day_with_stand_in_voice(cfg, conn, clock):
     assert run(cfg, conn, only=d) == 0
 
 
+def test_word_starts_from_phoneme_timings():
+    from newsrelay.audio.build import word_starts
+
+    # "about 1,600 — a record." -> phoneme words: about | one thousand six-hundred | — | a | record.
+    ph = [
+        ("ɐ", 0.0),
+        ("b", 0.1),
+        (" ", 0.2),
+        ("w", 0.3),
+        (" ", 0.5),
+        ("θ", 0.6),
+        (" ", 0.9),
+        ("s", 1.0),
+        (" ", 1.4),
+        ("—", 1.5),
+        (" ", 1.6),
+        ("ɐ", 1.7),
+        (" ", 1.8),
+        ("ɹ", 1.9),
+        (".", 2.3),
+    ]
+    assert word_starts(ph, [1, 3, 0, 1, 1]) == [0.0, 0.3, 1.7, 1.7, 1.9]
+    assert word_starts(ph, [1, 2, 0, 1, 1]) is None  # does not add up -> no guessing
+
+
+def test_build_day_keeps_per_word_starts_and_upgrades_old_timing(cfg, conn, clock):
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("lameenc")
+    from newsrelay.audio.build import SAMPLE_RATE, Spoken, build_day
+
+    service.publish_digest(conn, cfg, publish_input("daily-news/2026-10-03", [story(body=BODY)]))
+
+    def synth(text: str):
+        n = len(text.split(" "))
+        return Spoken(np.zeros(int(SAMPLE_RATE * 0.1 * n), dtype=np.float32), [0.1 * k for k in range(n)])
+
+    d = date(2026, 10, 3)
+    assert build_day(cfg, conn, d, synth) is True
+    path = audio_dir(cfg, d) / "timing.json"
+    t = json.loads(path.read_text())
+    assert t["version"] == 2
+    for t0, t1, w0, w1, at in t["stories"][0]["segments"]:
+        assert len(at) == w1 - w0 and at[0] == t0 and all(t0 <= x <= t1 for x in at)
+    t["version"] = 1  # audio from before per-word timings is rendered again
+    path.write_text(json.dumps(t))
+    assert build_day(cfg, conn, d, synth) is True
+
+
 def _fake_audio(cfg, d: date, words: int) -> None:
     out = audio_dir(cfg, d)
     out.mkdir(parents=True)

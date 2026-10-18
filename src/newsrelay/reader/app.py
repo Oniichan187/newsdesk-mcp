@@ -415,9 +415,13 @@ function render() {
   $("pos").textContent = "Story " + (t.si + 1) + " of " + DATA.stories.length + " · word " + (i + 1) + " of " + tokens.length;
   const eff = speaking() ? effectiveWpm(t.si) : wpm;
   const mins = (tokens.length - i) / eff; $("left").textContent = mins < 1 ? Math.ceil(mins * 60) + " s left" : Math.ceil(mins) + " min left";
-  document.querySelectorAll(".stories button").forEach((el, k) => el.classList.toggle("on", k === t.si));
-  store("pos:" + DATA.day, i);
+  if (t.si !== shownStory) {
+    shownStory = t.si;
+    document.querySelectorAll(".stories button").forEach((el, k) => el.classList.toggle("on", k === t.si));
+  }
+  if (!playing) store("pos:" + DATA.day, i);
 }
+let shownStory = -1;
 
 // ---- read aloud: the audio clock drives the words ----------------------------------------------
 const AUDIO = DATA.audio; const audio = new Audio(); audio.preload = "auto"; audio.preservesPitch = true;
@@ -425,10 +429,11 @@ let audioStory = -1, raf = 0;
 const MAX_RATE = 4, MIN_RATE = 0.5;
 const plans = (AUDIO ? AUDIO.stories : []).map((sa, si) => {
   // per segment: cumulative character weights of its words, for positions inside a sentence
-  const segs = sa.segments.map(([t0, t1, w0, w1]) => {
+  const segs = sa.segments.map(([t0, t1, w0, w1, at]) => {
+    // at = when each word starts (from the voice itself); older days only know the sentence
     const lens = []; let acc = 0;
     for (let k = w0; k < w1; k++) { acc += (DATA.stories[si].words[k] || ["", ""])[1].length + 1; lens.push(acc); }
-    return {t0, t1, w0, w1, lens, total: acc || 1};
+    return {t0, t1, w0, w1, lens, total: acc || 1, at: Array.isArray(at) && at.length === w1 - w0 ? at : null};
   });
   const spoken = segs.reduce((n, s) => n + (s.t1 - s.t0), 0) || 1;
   return {url: sa.url, segs, natural: sa.words / (spoken / 60)};
@@ -440,14 +445,20 @@ function wordAt(si, t) {
   const p = plans[si]; let last = 0;
   for (const s of p.segs) {
     if (t < s.t0) return last;
-    if (t < s.t1) { const target = (t - s.t0) / (s.t1 - s.t0) * s.total; let k = 0; while (k < s.lens.length - 1 && s.lens[k] < target) k++; return s.w0 + k; }
+    if (t < s.t1) {
+      if (s.at) { let k = 0; while (k < s.at.length - 1 && s.at[k + 1] <= t) k++; return s.w0 + k; }
+      const target = (t - s.t0) / (s.t1 - s.t0) * s.total; let k = 0; while (k < s.lens.length - 1 && s.lens[k] < target) k++; return s.w0 + k;
+    }
     last = Math.max(s.w0, s.w1 - 1);
   }
   return last;
 }
 function timeOf(si, w) {
   const p = plans[si];
-  for (const s of p.segs) if (w >= s.w0 && w < s.w1) { const before = w > s.w0 ? s.lens[w - s.w0 - 1] : 0; return s.t0 + before / s.total * (s.t1 - s.t0); }
+  for (const s of p.segs) if (w >= s.w0 && w < s.w1) {
+    if (s.at) return s.at[w - s.w0];
+    const before = w > s.w0 ? s.lens[w - s.w0 - 1] : 0; return s.t0 + before / s.total * (s.t1 - s.t0);
+  }
   const next = p.segs.find(s => s.w0 >= w); return next ? next.t0 : 0;
 }
 function speakNote() {
@@ -456,9 +467,17 @@ function speakNote() {
   const si = tokens.length ? tokens[i].si : 0, r = rateFor(si);
   $("speaknote").textContent = r >= MAX_RATE && wpm > effectiveWpm(si) ? "Voice speed is limited to " + MAX_RATE + "× (about " + effectiveWpm(si) + " words per minute)." : "";
 }
+// audio.currentTime only moves every few frames (in some browsers every 250 ms, which at 3x speed
+// is several words), so between updates the clock runs on from the last value at playbackRate.
+let clockAt = -1, clockWall = 0;
+function audioClock() {
+  const now = performance.now(), t = audio.currentTime;
+  if (t !== clockAt || audio.paused || audio.seeking) { clockAt = t; clockWall = now; return t; }
+  return t + Math.min(0.5, (now - clockWall) / 1000 * audio.playbackRate);
+}
 function loop() {
   const si = audioStory; if (si < 0) return;
-  const w = starts[si] + wordAt(si, audio.currentTime);
+  const w = starts[si] + wordAt(si, audioClock());
   if (w !== i) { i = w; render(); }
   raf = requestAnimationFrame(loop);
 }
@@ -495,7 +514,7 @@ function play() {
   playing = true; $("play").textContent = "Pause"; render();
   if (speaking()) startAudio(); else timer = setTimeout(step, delay(tokens[i]));
 }
-function stop() { playing = false; clearTimeout(timer); timer = null; cancelAnimationFrame(raf); audio.pause(); $("play").textContent = "Play"; }
+function stop() { playing = false; clearTimeout(timer); timer = null; cancelAnimationFrame(raf); audio.pause(); $("play").textContent = "Play"; store("pos:" + DATA.day, i); }
 function toggle() { playing ? stop() : play(); }
 function jump(n) { const run = playing; stop(); i = Math.max(0, Math.min(tokens.length - 1, i + n)); render(); if (run) play(); }
 function setWpm(v) {
