@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.14.2 — 2026-10-18
+
+- Reader: the smoothed audio clock no longer steps back when the browser's real position arrives
+  slightly behind the estimate (a word flickered back several times per 15 s); it waits for the
+  audio to catch up instead, and only real seeks move it backwards.
+
 ## 1.14.1 — 2026-10-18
 
 - **Voice and words in sync**: every word now gets its real start time from the voice (Kokoro's

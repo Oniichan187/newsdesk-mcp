@@ -469,11 +469,17 @@ function speakNote() {
 }
 // audio.currentTime only moves every few frames (in some browsers every 250 ms, which at 3x speed
 // is several words), so between updates the clock runs on from the last value at playbackRate.
-let clockAt = -1, clockWall = 0;
+// The estimate never steps back for a small overshoot (that showed as a word flickering back);
+// only a real seek (Back, story change) moves it backwards.
+let clockAt = -1, clockWall = 0, shownT = -1;
 function audioClock() {
   const now = performance.now(), t = audio.currentTime;
-  if (t !== clockAt || audio.paused || audio.seeking) { clockAt = t; clockWall = now; return t; }
-  return t + Math.min(0.5, (now - clockWall) / 1000 * audio.playbackRate);
+  if (t !== clockAt) { clockAt = t; clockWall = now; }
+  let est = t;
+  if (!audio.paused && !audio.seeking && audio.readyState >= 3) est += Math.min(0.3, (now - clockWall) / 1000 * audio.playbackRate);
+  if (est < shownT && shownT - est < 0.6) est = shownT;
+  shownT = est;
+  return est;
 }
 function loop() {
   const si = audioStory; if (si < 0) return;
@@ -487,7 +493,7 @@ function loadStory(si) {
 function startAudio() {
   // play() runs synchronously inside the tap/click: phones only allow sound from a user gesture.
   const si = tokens[i].si, target = timeOf(si, i - starts[si]);
-  loadStory(si);
+  loadStory(si); shownT = -1;
   audio.defaultPlaybackRate = audio.playbackRate = rateFor(si);
   if (audio.readyState >= 1) audio.currentTime = target;
   else audio.addEventListener("loadedmetadata", () => { audio.currentTime = target; audio.playbackRate = rateFor(si); }, {once: true});
