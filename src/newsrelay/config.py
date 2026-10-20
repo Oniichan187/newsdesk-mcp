@@ -40,7 +40,7 @@ class Config:
     refresh_token_ttl_days: int = 180
     # Staged stories whose run was never published (the final ChatGPT call was lost or blocked) are
     # published by the worker this many minutes after the last staging call.
-    stage_autopublish_minutes: float = 20.0
+    stage_autopublish_minutes: float = 10.0
     # Research checkpoint behaviour
     overlap_hours: float = 6.0
     initial_lookback_hours: float = 24.0

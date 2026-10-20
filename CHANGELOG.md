@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.15.1 — 2026-10-20
+
+- Daily runs that stopped early: since 8 Oct ChatGPT never sent the final publish call, and on
+  some days it stopped before staging anything. Staged runs are now auto-published after **10**
+  minutes instead of 20 (`stage_autopublish_minutes`).
+- `newsrelay_match_candidates` no longer rejects the whole call over one unusable source URL
+  (on 19 Oct that was the last thing ChatGPT did). Unusable URLs are ignored and returned as
+  `ignored_source_urls`; a candidate without any usable URL gets `SOURCE_NOT_ALLOWED`. Published
+  stories stay strict.
+- Task prompt: stage the most important story first and each story right after writing it, stay
+  under 10 minutes between stage calls, retry a rejected call with only the bad value fixed, and
+  at most 25 candidates.
+
 ## 1.15.0 — 2026-10-18
 
 - **German edition on the website**: an **EN/DE** switch (key L) next to the voice button. German

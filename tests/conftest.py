@@ -65,6 +65,7 @@ def cfg(tmp_path: Path) -> Config:
         briefing_pdf=False,  # enabled explicitly in test_briefing.py
         briefing_dir=tmp_path / "briefings",
         reader_tunnel_metrics="",  # tests never probe a real cloudflared
+        tts_model_dir=tmp_path / "tts",  # never the models installed on the host
     )
 
 

@@ -176,13 +176,28 @@ class Candidate(Strict):
     event_time: AwareDatetime | None = None
     entities: list[Entity] = Field(default_factory=list, max_length=MAX_ENTITIES)
     key_facts: list[Fact] = Field(min_length=1, max_length=MAX_FACTS)
-    source_urls: list[ArticleUrl] = Field(min_length=1, max_length=MAX_SOURCES)
+    # Lenient on purpose: candidates are only matched, never published. One bad URL must not reject
+    # the whole match call (ChatGPT tends to give up after that); unusable URLs are reported back.
+    source_urls: list[Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000)]] = Field(
+        min_length=1,
+        max_length=MAX_SOURCES,
+        description="https article URLs; unusable ones are ignored and listed in the result",
+    )
     topic_key: TopicKey | None = None
 
-    @model_validator(mode="after")
-    def _unique_sources(self) -> Candidate:
-        _distinct_urls(list(self.source_urls))
-        return self
+    def usable_urls(self) -> tuple[list[str], list[str]]:
+        """(usable article URLs without duplicates, ignored URLs)."""
+        ok: list[str] = []
+        bad: list[str] = []
+        for u in self.source_urls:
+            try:
+                _article_url(_https_url(u))
+            except ValueError:
+                bad.append(u)
+                continue
+            if u not in ok:
+                ok.append(u)
+        return ok, bad
 
 
 class MatchInput(Strict):

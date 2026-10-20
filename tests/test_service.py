@@ -334,10 +334,8 @@ def test_match_after_completion_refused(cfg, conn):
 @pytest.mark.parametrize(
     "bad",
     [
-        {"source_urls": ["http://insecure.example.com/x"]},
-        {"source_urls": ["https://user:pw@example.com/x"]},
-        {"source_urls": ["javascript:alert(1)"]},
-        {"source_urls": ["https://example.com/" + "a" * 700]},
+        {"source_urls": []},
+        {"source_urls": ["https://example.com/" + "a" * 2001]},
         {"key_facts": []},
         {"key_facts": ["f" * 300]},
         {"key_facts": [f"fact number {i}" for i in range(9)]},
@@ -355,6 +353,26 @@ def test_invalid_candidate_rejected(bad):
     data.update(bad)
     with pytest.raises(ValidationError):
         Candidate.model_validate(data)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://insecure.example.com/x",
+        "https://user:pw@example.com/x",
+        "javascript:alert(1)",
+        "https://example.com/" + "a" * 700,
+        "https://www.tagesschau.de/",
+    ],
+)
+def test_unusable_candidate_url_is_ignored_not_fatal(conn, url):
+    good = "https://www.tagesschau.de/wirtschaft/meta-strafe-eu-100.html"
+    c = candidate(source_urls=[url, good, good])
+    assert c.usable_urls() == ([good], [url])
+    only_bad = match(conn, "daily-news/2026-10-03", candidate("c2", source_urls=[url]))[0]
+    assert only_bad["classification"] == "SOURCE_NOT_ALLOWED" and only_bad["ignored_source_urls"] == [url]
+    mixed = match(conn, "daily-news/2026-10-03", c)[0]
+    assert mixed["classification"] == "NO_MATCH" and mixed["ignored_source_urls"] == [url]
 
 
 def test_oversized_lists_rejected():

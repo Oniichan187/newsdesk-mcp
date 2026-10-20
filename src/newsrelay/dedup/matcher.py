@@ -126,7 +126,7 @@ def match_candidate(conn: sqlite3.Connection, cand: Candidate) -> dict[str, Any]
 
     cfp = facts_fingerprint(cand.key_facts)
     tfp = title_fingerprint(cand.title)
-    hashes = sorted({url_hash(u) for u in cand.source_urls})
+    hashes = sorted({url_hash(u) for u in cand.usable_urls()[0]})
 
     q_marks = ",".join("?" * len(hashes))
     for row in conn.execute(

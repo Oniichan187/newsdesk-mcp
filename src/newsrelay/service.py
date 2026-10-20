@@ -186,17 +186,25 @@ def match_candidates(conn: sqlite3.Connection, cfg: Config, inp: MatchInput) -> 
         raise RelayError("candidate_id values must be unique within a request")
     results = []
     for c in inp.candidates:
-        bad = _disallowed(cfg, list(c.source_urls))
-        if bad:
-            results.append(
-                {
-                    "candidate_id": c.candidate_id,
-                    "classification": "SOURCE_NOT_ALLOWED",
-                    "reason": f"not on the source allowlist: {', '.join(bad)}; cite only allowed outlets",
-                }
-            )
+        urls, ignored = c.usable_urls()
+        bad = _disallowed(cfg, urls)
+        if not urls:
+            res: dict[str, Any] = {
+                "candidate_id": c.candidate_id,
+                "classification": "SOURCE_NOT_ALLOWED",
+                "reason": "no usable source URL (https link to the article itself); find the article URL",
+            }
+        elif bad:
+            res = {
+                "candidate_id": c.candidate_id,
+                "classification": "SOURCE_NOT_ALLOWED",
+                "reason": f"not on the source allowlist: {', '.join(bad)}; cite only allowed outlets",
+            }
         else:
-            results.append(match_candidate(conn, c))
+            res = match_candidate(conn, c)
+        if ignored:
+            res["ignored_source_urls"] = ignored
+        results.append(res)
     summary: dict[str, int] = {}
     for r in results:
         summary[r["classification"]] = summary.get(r["classification"], 0) + 1

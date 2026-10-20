@@ -215,11 +215,14 @@ def test_full_flow_oauth_mcp_outbox_fake_discord(live, caplog):
     ok, matched = m.call("newsrelay_match_candidates", {"run_key": run_key, "candidates": [cand]})
     assert ok and matched["results"][0]["classification"] == "NO_MATCH"
 
-    ok, err = m.call(
+    ok, lenient = m.call(
         "newsrelay_match_candidates",
         {"run_key": run_key, "candidates": [{**cand, "source_urls": ["http://insecure.example.com"]}]},
     )
-    assert not ok and "https" in err
+    assert ok, lenient  # one unusable URL no longer rejects the whole call
+    (res,) = lenient["results"]
+    assert res["classification"] == "SOURCE_NOT_ALLOWED"
+    assert res["ignored_source_urls"] == ["http://insecure.example.com"]
 
     body = ("Paragraph about the event @everyone. " * 25 + "\n\n") * 3
     st = story(
