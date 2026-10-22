@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.16.0 — 2026-10-22
+
+- Website: only **English and German**. The Google Website Translator is gone (and with it every
+  Google host from the CSP); the EN/DE switch now also changes the page's labels, status line and
+  notes. Browsers are asked not to offer their own translation.
+- Audio in both languages: index and day page show **MP3 EN** and **MP3 DE**; older days get
+  their German edition, one day per audio run (`tts_german_backfill_days`, default 90).
+- `newsrelay audio --lang de` renders only one edition.
+- Discord archive: `discord_daily_keep` now counts calendar days, as documented. It counted
+  channels, so days without a post kept old day channels (11 and 13 Oct) out of the archive.
+
 ## 1.15.1 — 2026-10-20
 
 - Daily runs that stopped early: since 8 Oct ChatGPT never sent the final publish call, and on

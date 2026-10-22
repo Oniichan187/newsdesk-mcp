@@ -161,6 +161,22 @@ def test_old_days_are_copied_to_archive_then_deleted(cfg, conn, clock):
     assert w.maintain_days() == 0  # rate-limited check, and nothing else is due
 
 
+def test_keep_counts_calendar_days_not_channels(cfg, conn, clock):
+    """Regression: days without a post have no channel and must not keep older days alive."""
+    cfg = _cfg(cfg)  # keep 2 days
+    guild, bot = FakeGuild(), FakeBot()
+    days = DayChannels(cfg, conn, guild)
+    w = Worker(cfg, conn, bot, days=days)
+    _publish(conn, cfg, 3)
+    _drain(w)
+    clock.advance(days=1)
+    _publish(conn, cfg, 4)
+    _drain(w)
+    clock.advance(days=5)  # quiet days 5..8, today is the 9th
+    assert [r["day"] for r in days.due_for_archive(date(2026, 10, 9))] == ["2026-10-03", "2026-10-04"]
+    assert days.archive_old(lambda p, k, c: bot.send(p, k, c), lambda s: None) == 2
+
+
 def test_archive_copy_resumes_without_duplicates(cfg, conn, clock):
     cfg = _cfg(cfg)
     guild = FakeGuild()

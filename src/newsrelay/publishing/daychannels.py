@@ -5,7 +5,7 @@ creates or moves the category itself):
 
     📰 Tagesbriefing        category
       📅-mo-05-10           one text channel per local day, newest on top
-      📅-so-04-10           ... the last `discord_daily_keep` days
+      📅-so-04-10           ... the last `discord_daily_keep` calendar days
       🗄-archiv             older days, copied here chronologically before their channel is deleted
 
 Delivery never depends on this: when a channel cannot be resolved (no category id configured,
@@ -22,7 +22,7 @@ import logging
 import sqlite3
 import time
 from collections.abc import Callable
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -243,12 +243,14 @@ class DayChannels:
     # -- archiving -----------------------------------------------------------------------------
 
     def due_for_archive(self, today: date) -> list[sqlite3.Row]:
-        rows = self.conn.execute(
-            "SELECT * FROM discord_day_channels WHERE state != 'archived' ORDER BY day DESC"
+        """Channels of days older than `discord_daily_keep` calendar days, oldest first.
+
+        Counted in days, not channels: days without a post (no channel) must not keep old ones."""
+        cutoff = (today - timedelta(days=max(1, self.cfg.discord_daily_keep))).isoformat()
+        return self.conn.execute(
+            "SELECT * FROM discord_day_channels WHERE state != 'archived' AND day < ? ORDER BY day",
+            (cutoff,),
         ).fetchall()
-        keep = max(1, self.cfg.discord_daily_keep)
-        old = [r for r in rows[keep:] if r["day"] < today.isoformat()]
-        return sorted(old, key=lambda r: r["day"])  # oldest first = chronological archive
 
     def archive_old(self, send: Sender, pause: Callable[[float], None], now: datetime | None = None) -> int:
         """Copy retired days to the archive, then delete their channels. Returns days finished."""

@@ -35,17 +35,15 @@ PDFJS_SRI = "sha512-q+4liFwdPC/bNdhUpZx6aXDx/h77yEQtn4I1slHydcbZK34nLaR3cAeYSJsh
 PDFJS_WORKER_SRI = (
     "sha512-BbrZ76UNZq5BhH7LL7pn9A4TKQpQeNCHOo65/akfelcIBbcVvYWOFQKPXIrykE3qZxYjmDX573oa4Ywsc7rpTw=="
 )
-_GOOGLE = "https://translate.google.com https://translate.googleapis.com https://translate-pa.googleapis.com"
 HEADERS = {
-    # Google Website Translator (widget) and pdf.js (cdnjs, SRI-pinned) are the only third parties.
+    # pdf.js (cdnjs, SRI-pinned) is the only third party. Languages are English and the German
+    # edition made on the Pi; no page translator.
     "Content-Security-Policy": (
         "default-src 'none'; "
-        f"script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://www.gstatic.com {_GOOGLE}; "
-        "style-src 'unsafe-inline' https://www.gstatic.com https://translate.googleapis.com; "
-        f"img-src 'self' data: https://www.gstatic.com https://www.google.com {_GOOGLE}; "
-        f"connect-src 'self' https://cdnjs.cloudflare.com {_GOOGLE}; "
-        "font-src https://fonts.gstatic.com; "
-        "frame-src https://translate.google.com https://translate.googleapis.com; "
+        "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
+        "style-src 'unsafe-inline'; "
+        "img-src 'self' data:; "
+        "connect-src 'self' https://cdnjs.cloudflare.com; "
         "worker-src blob:; media-src 'self'; "
         "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
     ),
@@ -118,14 +116,19 @@ def _day_row(cfg: Config, d: date, n: int) -> str:
     if not pdfs:
         pdfs = '<span class="ghost off" title="No PDF for this day">PDF</span>'
     if (audio_dir(cfg, d) / "day.mp3").is_file():
-        mp3 = f'<a class="ghost" href="/day/{iso}/audio/day.mp3" download="briefing-{iso}.mp3">MP3</a>'
+        mp3 = (
+            f'<a class="ghost" href="/day/{iso}/audio/day.mp3" download="briefing-{iso}.mp3"'
+            ' title="English spoken version">MP3 EN</a>'
+        )
     else:
-        mp3 = '<span class="ghost off" title="The spoken version is being prepared">MP3</span>'
+        mp3 = '<span class="ghost off" title="The English spoken version is being prepared">MP3 EN</span>'
     if (audio_dir(cfg, d, "de") / "day.mp3").is_file():
         mp3 += (
             f'<a class="ghost" href="/day/{iso}/audio-de/day.mp3" download="briefing-{iso}-de.mp3"'
-            ' title="German spoken version" translate="no">MP3 DE</a>'
+            ' title="Deutsche Sprachversion">MP3 DE</a>'
         )
+    else:
+        mp3 += '<span class="ghost off" title="Die deutsche Version wird vorbereitet">MP3 DE</span>'
     return (
         f'<li><div><div class="date">{weekday}, {d.day} {MONTHS[d.month - 1]}</div>'
         f'<div class="muted">{_count(n)}</div></div>'
@@ -273,7 +276,7 @@ def create_reader_app(cfg: Config) -> Starlette:
 
 
 def _page(template: str) -> str:
-    return template.replace("{{TRANSLATE}}", TRANSLATE_HTML)
+    return template
 
 
 _BASE_CSS = """
@@ -282,25 +285,14 @@ _BASE_CSS = """
 --accent:#8fb3dd;--pivot:#ff7a6b;--line:#2e2e36}}
 *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--ink);
 font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-body{top:0!important}.skiptranslate iframe,.goog-te-banner-frame{display:none!important}
 a{color:var(--accent)}.muted{color:var(--muted)}
 .wrap{max-width:760px;margin:0 auto;padding:20px 16px 40px}
 .kicker{font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:600}
 h1{font-family:"Iowan Old Style","Palatino Linotype",Georgia,serif;font-size:1.9rem;line-height:1.15;margin:.3rem 0 1.2rem}
-.lang{display:flex;align-items:center;gap:8px;font-size:.8rem;color:var(--muted)}
-.lang select{font:inherit;font-size:.82rem;padding:4px 6px;border:1px solid var(--line);border-radius:8px;
-background:var(--card);color:var(--ink)}
-.goog-logo-link,.goog-te-gadget>span{display:none!important}.goog-te-gadget{font-size:0!important;color:transparent!important}
 """
 
-# Google Website Translator: translates the page text in the browser. The speed-reading stage is
-# excluded (translate="no"): translating one flashing word at a time would make no sense.
-TRANSLATE_HTML = """<div class="lang notranslate" translate="no"><span>Language</span><div id="gt"></div></div>
-<script>function googleTranslateElementInit(){new google.translate.TranslateElement({pageLanguage:"en",autoDisplay:false},"gt");}</script>
-<script src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit" async></script>"""
-
 INDEX_HTML = (
-    """<!doctype html><html lang="en"><head><meta charset="utf-8">
+    """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="google" content="notranslate">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Daily Briefings</title><style>"""
     + _BASE_CSS
     + """
@@ -323,13 +315,13 @@ summary span{margin-left:auto;font-size:.8rem;color:var(--muted);font-weight:400
 .primary{background:var(--accent);color:var(--bg)!important}.ghost{border:1px solid var(--line)}
 .off{color:var(--muted);opacity:.55;cursor:default}
 </style></head><body><main class="wrap"><div class="head"><div><div class="kicker">News Relay</div>
-<h1>Daily Briefings</h1></div>{{TRANSLATE}}</div>
+<h1>Daily Briefings</h1></div></div>
 <ul>{{ITEMS}}</ul></main></body></html>"""
 )
 
 READER_HTML = (
     (
-        """<!doctype html><html lang="en"><head><meta charset="utf-8">
+        """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="google" content="notranslate">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>{{TITLE}} · Speed reading</title><style>"""
         + _BASE_CSS
@@ -387,7 +379,7 @@ border-radius:999px;padding:4px 10px;cursor:pointer}
 box-shadow:0 1px 2px rgba(0,0,0,.08),0 4px 18px rgba(0,0,0,.06)}
 </style></head><body><main class="wrap">
 <div class="top"><div><div class="kicker">Speed reading</div><h1>{{TITLE}}</h1></div>
-<div class="links"><nav><a href="/">All days</a><span id="files"></span></nav>{{TRANSLATE}}</div></div>
+<div class="links"><nav><a href="/" data-i18n="alldays">All days</a><span id="files"></span></nav></div></div>
 <div class="stories" id="stories"></div>
 <section class="stage notranslate" id="stage" translate="no" aria-live="off">
 <div class="meta" id="meta"></div><div class="headline" id="headline"></div>
@@ -396,20 +388,20 @@ box-shadow:0 1px 2px rgba(0,0,0,.08),0 4px 18px rgba(0,0,0,.06)}
 <div class="bar"><i id="bar"></i></div>
 <div class="status"><span id="pos"></span><span id="left"></span></div>
 </section>
-<div class="controls"><button id="back" title="Back 10 words (Left)">Back</button>
+<div class="controls"><button id="back" title="Back 10 words (Left)" data-i18n="back">Back</button>
 <button id="play" class="play" title="Play / pause (Space)">Play</button>
-<button id="fwd" title="Forward 10 words (Right)">Next</button>
+<button id="fwd" title="Forward 10 words (Right)" data-i18n="next">Next</button>
 <button id="voice" class="voice" aria-pressed="false" title="Voice on/off (V) — follows the words per minute">Voice off</button>
 <span class="langs" id="langs" translate="no"><button id="lang-en" aria-pressed="true" title="English">EN</button><button id="lang-de" aria-pressed="false" title="Deutsch (L)">DE</button></span></div>
-<section class="speed"><div class="row"><label for="wpm">Words per minute</label>
+<section class="speed"><div class="row"><label for="wpm" data-i18n="wpm">Words per minute</label>
 <input type="range" id="wpm" min="100" max="2000" step="10">
 <input type="number" id="wpmn" min="100" max="2000" step="10" aria-label="Words per minute"></div>
 <div class="presets" id="presets"></div>
-<div class="opts"><label><input type="checkbox" id="ctx" checked> Show neighbouring words</label>
-<label><input type="checkbox" id="pause" checked> Pause longer at punctuation</label>
+<div class="opts"><label><input type="checkbox" id="ctx" checked> <span data-i18n="ctx">Show neighbouring words</span></label>
+<label><input type="checkbox" id="pause" checked> <span data-i18n="pause">Pause longer at punctuation</span></label>
 <span class="note" id="speaknote"></span></div></section>
-<p class="hint">Space: play/pause · V: voice on/off · L: English/Deutsch · Left/Right: 10 words · Up/Down: speed ±25 · Tap the word to play or pause.</p>
-<section class="doc" id="doc" hidden><h2>Read the PDF</h2><p class="muted" id="docnote">Loading…</p><div class="pages" id="pages"></div></section>
+<p class="hint" data-i18n="hint">Space: play/pause · V: voice on/off · L: English/Deutsch · Left/Right: 10 words · Up/Down: speed ±25 · Tap the word to play or pause.</p>
+<section class="doc" id="doc" hidden><h2 data-i18n="pdf">Read the PDF</h2><p class="muted" id="docnote" data-i18n="loading">Loading…</p><div class="pages" id="pages"></div></section>
 </main>
 <script>
 const DATA = {{DATA}};
@@ -419,6 +411,30 @@ const store = (k, v) => { try { if (v === undefined) return localStorage.getItem
 const EDITIONS = {en: {stories: DATA.stories, audio: DATA.audio}};
 if (DATA.de) EDITIONS.de = DATA.de;
 let lang = EDITIONS[store("lang")] ? store("lang") : "en", ED = EDITIONS[lang];
+// Interface text: English and German only (the page has no translator).
+const UI = {
+  en: {alldays: "All days", back: "Back", next: "Next", play: "Play", pause: "Pause", von: "Voice on", voff: "Voice off",
+    wpm: "Words per minute", ctx: "Show neighbouring words", pause_: "Pause longer at punctuation", pdf: "Read the PDF", loading: "Loading…",
+    hint: "Space: play/pause · V: voice on/off · L: English/Deutsch · Left/Right: 10 words · Up/Down: speed ±25 · Tap the word to play or pause.",
+    none: "No stories for this day.", pos: (s, n, w, m) => "Story " + s + " of " + n + " · word " + w + " of " + m,
+    left: (v, u) => v + (u ? " s left" : " min left"), prep: "The spoken version is being prepared on the server.",
+    limit: (r, w) => "Voice speed is limited to " + r + "× (about " + w + " words per minute).",
+    blocked: "The browser blocked the voice. Tap Play again to hear it.", vtitle: "Voice on/off (V) — follows the words per minute",
+    pages: n => n + " pages · ", open: "open or download", pdffail: "The PDF could not be shown here. ", direct: "Open it directly"},
+  de: {alldays: "Alle Tage", back: "Zurück", next: "Weiter", play: "Start", pause: "Pause", von: "Stimme an", voff: "Stimme aus",
+    wpm: "Wörter pro Minute", ctx: "Nachbarwörter zeigen", pause_: "Bei Satzzeichen länger halten", pdf: "Das PDF lesen", loading: "Wird geladen…",
+    hint: "Leertaste: Start/Pause · V: Stimme an/aus · L: English/Deutsch · Links/Rechts: 10 Wörter · Hoch/Runter: Tempo ±25 · Tippe auf das Wort für Start oder Pause.",
+    none: "Keine Meldungen an diesem Tag.", pos: (s, n, w, m) => "Meldung " + s + " von " + n + " · Wort " + w + " von " + m,
+    left: (v, u) => "noch " + v + (u ? " s" : " min"), prep: "Die gesprochene Version wird auf dem Server vorbereitet.",
+    limit: (r, w) => "Die Stimme ist auf " + r + "× begrenzt (etwa " + w + " Wörter pro Minute).",
+    blocked: "Der Browser hat die Stimme blockiert. Tippe noch einmal auf Start.", vtitle: "Stimme an/aus (V) — folgt den Wörtern pro Minute",
+    pages: n => n + " Seiten · ", open: "öffnen oder herunterladen", pdffail: "Das PDF kann hier nicht angezeigt werden. ", direct: "Direkt öffnen"},
+};
+const tr = k => UI[lang][k];
+function applyUi() {
+  document.querySelectorAll("[data-i18n]").forEach(el => { const k = el.dataset.i18n; el.textContent = tr(k === "pause" ? "pause_" : k); });
+  $("play").textContent = playing ? tr("pause") : tr("play");
+}
 let tokens = [], starts = [];
 function buildTokens() {
   tokens = []; starts = [];
@@ -454,16 +470,16 @@ function context(at) {
   return [before.length ? before.join(" ") + "  " : "", after.length ? "  " + after.join(" ") : ""];
 }
 function render() {
-  if (!tokens.length) { $("headline").textContent = "No stories for this day."; return; }
+  if (!tokens.length) { $("headline").textContent = tr("none"); return; }
   const t = tokens[i], s = ED.stories[t.si];
   const [a, b, c] = splitWord(t.w);
   $("pre").textContent = a; $("piv").textContent = b; $("post").textContent = c;
   const [left, right] = context(i); $("ctxl").textContent = left; $("ctxr").textContent = right;
   $("label").textContent = t.label; $("meta").textContent = s.meta; $("headline").textContent = s.headline;
   $("bar").style.width = (100 * (i + 1) / tokens.length) + "%";
-  $("pos").textContent = "Story " + (t.si + 1) + " of " + ED.stories.length + " · word " + (i + 1) + " of " + tokens.length;
+  $("pos").textContent = tr("pos")(t.si + 1, ED.stories.length, i + 1, tokens.length);
   const eff = speaking() ? effectiveWpm(t.si) : wpm;
-  const mins = (tokens.length - i) / eff; $("left").textContent = mins < 1 ? Math.ceil(mins * 60) + " s left" : Math.ceil(mins) + " min left";
+  const mins = (tokens.length - i) / eff; $("left").textContent = mins < 1 ? tr("left")(Math.ceil(mins * 60), true) : tr("left")(Math.ceil(mins), false);
   if (t.si !== shownStory) {
     shownStory = t.si;
     document.querySelectorAll(".stories button").forEach((el, k) => el.classList.toggle("on", k === t.si));
@@ -513,10 +529,10 @@ function timeOf(si, w) {
   const next = p.segs.find(s => s.w0 >= w); return next ? next.t0 : 0;
 }
 function speakNote() {
-  if (!plans.length) { $("speaknote").textContent = ED.audio === null ? "The spoken version is being prepared on the server." : ""; return; }
+  if (!plans.length) { $("speaknote").textContent = ED.audio === null ? tr("prep") : ""; return; }
   if (!voiceOn) { $("speaknote").textContent = ""; return; }
   const si = tokens.length ? tokens[i].si : 0, r = rateFor(si);
-  $("speaknote").textContent = r >= MAX_RATE && wpm > effectiveWpm(si) ? "Voice speed is limited to " + MAX_RATE + "× (about " + effectiveWpm(si) + " words per minute)." : "";
+  $("speaknote").textContent = r >= MAX_RATE && wpm > effectiveWpm(si) ? tr("limit")(MAX_RATE, effectiveWpm(si)) : "";
 }
 // audio.currentTime only moves every few frames (in some browsers every 250 ms, which at 3x speed
 // is several words), so between updates the clock runs on from the last value at playbackRate.
@@ -551,7 +567,7 @@ function startAudio() {
   audio.play().catch(e => {
     if (e.name === "AbortError" || !playing) return;
     // The browser refused the sound: keep reading silently instead of stopping.
-    $("speaknote").textContent = "The browser blocked the voice. Tap Play again to hear it.";
+    $("speaknote").textContent = tr("blocked");
     cancelAnimationFrame(raf); audioStory = -1; timer = setTimeout(step, delay(tokens[i]));
   });
   cancelAnimationFrame(raf); raf = requestAnimationFrame(loop); speakNote();
@@ -568,10 +584,10 @@ function step() {
 }
 function play() {
   if (!tokens.length) return; if (i >= tokens.length - 1) i = 0;
-  playing = true; $("play").textContent = "Pause"; render();
+  playing = true; $("play").textContent = tr("pause"); render();
   if (speaking()) startAudio(); else timer = setTimeout(step, delay(tokens[i]));
 }
-function stop() { playing = false; clearTimeout(timer); timer = null; cancelAnimationFrame(raf); audio.pause(); $("play").textContent = "Play"; store(posKey(), i); }
+function stop() { playing = false; clearTimeout(timer); timer = null; cancelAnimationFrame(raf); audio.pause(); $("play").textContent = tr("play"); store(posKey(), i); }
 function toggle() { playing ? stop() : play(); }
 function jump(n) { const run = playing; stop(); i = Math.max(0, Math.min(tokens.length - 1, i + n)); render(); if (run) play(); }
 function setWpm(v) {
@@ -584,25 +600,23 @@ function setWpm(v) {
 function buildStoryButtons() {
   $("stories").replaceChildren(); shownStory = -1;
   ED.stories.forEach((s, k) => { const b = document.createElement("button"); b.innerHTML = '<b class="notranslate" translate="no">' + String(k + 1).padStart(2, "0") + '</b>'; b.appendChild(document.createTextNode(s.headline)); b.onclick = () => { const run = playing; stop(); i = starts[k]; render(); if (run) play(); }; $("stories").appendChild(b); });
-  // the German headlines are already German: keep the page translator off them
-  $("stories").classList.toggle("notranslate", lang !== "en"); $("stories").translate = lang === "en";
 }
 buildStoryButtons();
 [200, 300, 400, 500, 700, 1000, 1500, 2000].forEach(v => { const b = document.createElement("button"); b.textContent = v; b.onclick = () => setWpm(v); $("presets").appendChild(b); });
 const link = (href, text, file) => { const a = document.createElement("a"); a.href = href; a.textContent = text; if (file) a.download = file; $("files").appendChild(a); };
 DATA.pdfs.forEach((u, k) => link(u, DATA.pdfs.length > 1 ? "PDF " + (k + 1) : "PDF"));
-if (DATA.audio) link(DATA.audio.day, "MP3", "briefing-" + DATA.day + ".mp3");
+if (DATA.audio) link(DATA.audio.day, "MP3 EN", "briefing-" + DATA.day + ".mp3");
 if (DATA.de) link(DATA.de.audio.day, "MP3 DE", "briefing-" + DATA.day + "-de.mp3");
 function setVoice(on) {
   voiceOn = on && plans.length > 0;
-  $("voice").textContent = voiceOn ? "Voice on" : "Voice off"; $("voice").setAttribute("aria-pressed", String(voiceOn));
+  $("voice").textContent = voiceOn ? tr("von") : tr("voff"); $("voice").setAttribute("aria-pressed", String(voiceOn));
   if (voiceOn) loadStory(tokens.length ? tokens[i].si : 0);  // fetch ahead so the first tap starts at once
   speakNote();
 }
 let wantVoice = store("speak") === "1";
 function voiceButton() {
   $("voice").disabled = !plans.length;
-  $("voice").title = plans.length ? "Voice on/off (V) — follows the words per minute" : "The spoken version is being prepared on the server";
+  $("voice").title = plans.length ? tr("vtitle") : tr("prep");
 }
 $("voice").onclick = () => { const run = playing; stop(); wantVoice = !voiceOn; store("speak", wantVoice ? "1" : "0"); setVoice(wantVoice); if (run) play(); render(); };
 // Switch edition: same story, same share of it read, voice kept on if this edition has one.
@@ -616,12 +630,13 @@ function setLang(l) {
   i = Math.max(0, Math.min(tokens.length - 1, starts[s2] + Math.floor(share * len)));
   buildStoryButtons(); voiceButton(); setVoice(wantVoice);
   document.querySelectorAll("#langs button").forEach(b => b.setAttribute("aria-pressed", String(b.id === "lang-" + l)));
-  document.documentElement.lang = l;
+  document.documentElement.lang = l; applyUi();
   render(); if (run) play();
 }
 $("lang-en").onclick = () => setLang("en"); $("lang-de").onclick = () => setLang("de");
-if (!EDITIONS.de) { $("lang-de").disabled = true; $("lang-de").title = "The German version is being prepared on the server"; }
+if (!EDITIONS.de) { $("lang-de").disabled = true; $("lang-de").title = "Die deutsche Version wird auf dem Server vorbereitet"; }
 document.querySelectorAll("#langs button").forEach(b => b.setAttribute("aria-pressed", String(b.id === "lang-" + lang)));
+document.documentElement.lang = lang; applyUi();
 voiceButton(); setVoice(wantVoice);
 $("wpm").oninput = e => setWpm(e.target.value); $("wpmn").onchange = e => setWpm(e.target.value);
 $("play").onclick = toggle; $("back").onclick = () => jump(-10); $("fwd").onclick = () => jump(10);
@@ -645,8 +660,8 @@ async function loadPdf() {
     const src = await (await fetch("PDFJS/pdf.worker.min.js", {integrity: "PDFJS_WORKER_SRI"})).text();
     pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(new Blob([src], {type: "text/javascript"}));
     const doc = await pdfjsLib.getDocument(DATA.pdfs[DATA.pdfs.length - 1]).promise;
-    $("docnote").textContent = doc.numPages + " pages · " ;
-    const a = document.createElement("a"); a.href = DATA.pdfs[DATA.pdfs.length - 1]; a.textContent = "open or download"; $("docnote").appendChild(a);
+    $("docnote").textContent = tr("pages")(doc.numPages);
+    const a = document.createElement("a"); a.href = DATA.pdfs[DATA.pdfs.length - 1]; a.textContent = tr("open"); $("docnote").appendChild(a);
     const width = $("pages").clientWidth, ratio = Math.min(window.devicePixelRatio || 1, 2.5);
     for (let n = 1; n <= doc.numPages; n++) {
       const page = await doc.getPage(n), base = page.getViewport({scale: 1});
@@ -656,8 +671,8 @@ async function loadPdf() {
       await page.render({canvasContext: c.getContext("2d"), viewport: vp}).promise;
     }
   } catch (e) {
-    $("docnote").textContent = "The PDF could not be shown here. ";
-    const a = document.createElement("a"); a.href = DATA.pdfs[DATA.pdfs.length - 1]; a.textContent = "Open it directly"; $("docnote").appendChild(a);
+    $("docnote").textContent = tr("pdffail");
+    const a = document.createElement("a"); a.href = DATA.pdfs[DATA.pdfs.length - 1]; a.textContent = tr("direct"); $("docnote").appendChild(a);
   }
 }
 loadPdf();

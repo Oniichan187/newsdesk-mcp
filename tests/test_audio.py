@@ -150,16 +150,21 @@ def test_reader_serves_audio_with_ranges_and_three_buttons(cfg, conn, clock):
     try:
         with httpx.Client(base_url=srv.base) as c:
             before = c.get("/").text
-            assert 'title="The spoken version is being prepared">MP3' in before
+            assert 'title="The English spoken version is being prepared">MP3 EN' in before
             assert '"audio": null' in c.get("/day/2026-10-03").text
             _fake_audio(cfg, d, words)
             index = c.get("/").text
             assert ">Read</a>" in index and "/pdf/briefing-2026-10-03" in index
-            assert 'href="/day/2026-10-03/audio/day.mp3" download="briefing-2026-10-03.mp3">MP3' in index
+            assert 'href="/day/2026-10-03/audio/day.mp3" download="briefing-2026-10-03.mp3"' in index
+            assert ">MP3 EN<" in index
             page = c.get("/day/2026-10-03").text
             assert '"/day/2026-10-03/audio/story-01.mp3"' in page and 'id="voice"' in page
             assert 'id="pages"' in page and "integrity" in page  # PDF below, pdf.js pinned by SRI
-            assert 'translate="no"' in page and "translate_a/element.js" in page
+            assert (
+                "translate_a/element.js" not in page
+                and 'data-i18n="wpm"' in page
+                and "Wörter pro Minute" in page
+            )
             r = c.get("/day/2026-10-03/audio/day.mp3", headers={"Range": "bytes=0-99"})
             assert (
                 r.status_code == 206 and len(r.content) == 100 and r.headers["content-type"] == "audio/mpeg"
@@ -167,11 +172,7 @@ def test_reader_serves_audio_with_ranges_and_three_buttons(cfg, conn, clock):
             assert c.get("/day/2026-10-03/audio/timing.json").status_code == 404
             assert c.get("/day/2026-10-03/audio/..%2F..%2Fnewsrelay.db").status_code == 404
             csp = c.get("/").headers["content-security-policy"]
-            assert (
-                "frame-ancestors 'none'" in csp
-                and "translate.google.com" in csp
-                and "cdnjs.cloudflare.com" in csp
-            )
+            assert "frame-ancestors 'none'" in csp and "google" not in csp and "cdnjs.cloudflare.com" in csp
     finally:
         srv.stop()
 

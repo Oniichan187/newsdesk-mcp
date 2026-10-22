@@ -85,6 +85,8 @@ class Config:
     # setup-tts.sh installed the models.
     tts_german: bool = True
     tts_german_voice: str = "de_DE-thorsten-medium"
+    # Older days get their German edition too, one day per audio run, back this many days.
+    tts_german_backfill_days: int = 90
     # Country the readers live in; labels the "Impact <country>" line. Keep it equal to the
     # --country the task prompt was built with.
     reader_country: str = "Austria"

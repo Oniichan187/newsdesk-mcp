@@ -88,6 +88,18 @@ def test_reader_offers_the_german_edition(cfg, conn, clock):
             r = c.get("/day/2026-10-03/audio-de/day.mp3")
             assert r.status_code == 200 and "briefing-2026-10-03-de.mp3" in r.headers["content-disposition"]
             assert c.get("/day/2026-10-03/audio-xx/day.mp3").status_code == 404
-            assert "MP3 DE" in c.get("/").text
+            index = c.get("/").text
+            assert "MP3 DE" in index and "MP3 EN" in index
     finally:
         srv.stop()
+
+
+def test_older_days_without_german_are_backfilled(cfg, conn, clock):
+    from newsrelay.audio.build import _german_backlog
+
+    service.publish_digest(conn, cfg, publish_input("daily-news/2026-10-03", [story(body=BODY)]))
+    today = date(2026, 10, 10)
+    assert _german_backlog(cfg, conn, today, 2) == [date(2026, 10, 3)]
+    assert _german_backlog(cfg, conn, date(2026, 10, 4), 2) == []  # still inside the normal window
+    _render(cfg, conn)
+    assert _german_backlog(cfg, conn, today, 2) == []

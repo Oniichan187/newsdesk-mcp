@@ -350,9 +350,31 @@ def build_day_de(
     return True
 
 
-def run(cfg: Config, conn: sqlite3.Connection, days_back: int = 2, only: date | None = None) -> int:
+def _german_backlog(cfg: Config, conn: sqlite3.Connection, today: date, days_back: int) -> list[date]:
+    """Older days (newest first) whose German edition is missing or outdated."""
+    from . import german
+
+    out: list[date] = []
+    for i in range(days_back + 1, cfg.tts_german_backfill_days + 1):
+        d = today - timedelta(days=i)
+        stories = day_stories(conn, cfg, d)
+        if stories and not _current(
+            load_timing(cfg, d, "de"), german.content_hash_de(content_hash(stories, cfg), cfg)
+        ):
+            out.append(d)
+    return out
+
+
+def run(
+    cfg: Config,
+    conn: sqlite3.Connection,
+    days_back: int = 2,
+    only: date | None = None,
+    langs: tuple[str, ...] = ("en", "de"),
+) -> int:
     """Render missing/outdated audio for the last `days_back` days (newest first): English for all
-    days first, then the German edition (if its models are installed)."""
+    days first, then the German edition (if its models are installed). `langs` limits the editions,
+    e.g. ("de",) to backfill German for old days without re-rendering their English audio."""
     from . import german
 
     today = local_day(timeutil.now(), cfg.display_timezone)
@@ -365,13 +387,17 @@ def run(cfg: Config, conn: sqlite3.Connection, days_back: int = 2, only: date | 
         if not stories:
             continue
         digest = content_hash(stories, cfg)
-        if not _current(load_timing(cfg, d), digest):
+        if "en" in langs and not _current(load_timing(cfg, d), digest):
             synth = synth or kokoro_synth(cfg)
             done += int(build_day(cfg, conn, d, synth))
-        if german.available(cfg) and not _current(
-            load_timing(cfg, d, "de"), german.content_hash_de(digest, cfg)
+        if (
+            "de" in langs
+            and german.available(cfg)
+            and not _current(load_timing(cfg, d, "de"), german.content_hash_de(digest, cfg))
         ):
             todo_de.append(d)
+    if "de" in langs and only is None and not todo_de and german.available(cfg):
+        todo_de += _german_backlog(cfg, conn, today, days_back)[:1]  # older days: one per run
     if todo_de:
         synth = None  # free the English voice before loading the German one
         translate = german.argos_translator(cfg)

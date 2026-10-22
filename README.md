@@ -94,8 +94,8 @@ When a simple RSS bot is enough for you, use one — it is easier to set up. Use
   the posts are set with one command.
 - **Made for reading and listening** — every briefing also arrives as a calm, phone-sized PDF with
   Bionic Reading; a web reader shows each day word by word (RSVP, 100–2000 words per minute), reads it
-  aloud in sync with a natural voice generated on the Pi (Kokoro), offers the day as MP3 and
-  translates the page into any language.
+  aloud in sync with a natural voice generated on the Pi (Kokoro), and has the whole day in English
+  and German — text, voice and MP3, translated offline on the Pi.
 
 ## 🧭 How it works
 

@@ -154,7 +154,13 @@ def cmd_audio(cfg: Config, a: argparse.Namespace) -> int:
 
     conn = connect(cfg.db_path, readonly=True)
     try:
-        n = run(cfg, conn, days_back=a.days, only=date.fromisoformat(a.day) if a.day else None)
+        n = run(
+            cfg,
+            conn,
+            days_back=a.days,
+            only=date.fromisoformat(a.day) if a.day else None,
+            langs=tuple(a.lang) if a.lang else ("en", "de"),
+        )
     finally:
         conn.close()
     print(f"days rendered: {n}")
@@ -491,6 +497,9 @@ def main(argv: list[str] | None = None) -> int:
     au = sub.add_parser("audio")
     au.add_argument("--day", help="render this day (YYYY-MM-DD) only")
     au.add_argument("--days", type=int, default=2, help="look back this many days (default 2)")
+    au.add_argument(
+        "--lang", action="append", choices=("en", "de"), help="only this edition (repeatable; default both)"
+    )
     mg = sub.add_parser("migrate")
     mg.add_argument("--db", help="migrate this database file instead of the configured one")
     uc = sub.add_parser("upgrade-check")
